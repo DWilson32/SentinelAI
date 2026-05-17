@@ -34,6 +34,24 @@ can-you-import-chat-from-chatgpt/
 
 ## Run Locally
 
+### VS Code
+
+Open the repository root in VS Code. The shared workspace config in `.vscode/` adds recommended extensions, Python import paths, TypeScript SDK selection, debug launchers, and common tasks.
+
+First-time setup:
+
+```bash
+# VS Code task: Backend: create venv
+# VS Code task: Backend: install deps
+# VS Code task: Frontend: install deps
+```
+
+Run the app from **Run and Debug** with **Full stack: FastAPI + Next.js**, or run the **Full stack: dev** task.
+
+- Frontend: http://127.0.0.1:3000
+- Backend: http://127.0.0.1:8000
+- Health check task: **Backend: health check**
+
 ### Backend
 
 ```bash
@@ -84,14 +102,26 @@ Starts Qdrant, backend, and frontend.
 | GET | `/api/incidents/{id}` | Incident detail |
 | POST | `/api/incidents/ingest` | Manual ingest |
 | POST | `/api/incidents/ingest/mock` | Demo ingest |
+| POST | `/api/incidents/ingest/real` | No-key public feed ingest from USGS + ReliefWeb |
 | POST | `/api/incidents/ingest/external` | GNews / NewsAPI |
 | POST | `/api/chat` | Semantic RAG Q&A |
 | POST | `/api/rag/reindex` | Rebuild vector index |
+| POST | `/api/ml/risk/predict` | Predict severity, confidence, and drivers |
 | POST | `/api/agents/investigate/{id}` | LangGraph investigation |
 | GET | `/api/agents/runs/{id}` | Agent run history |
+| GET | `/api/reports/{id}` | List generated incident reports |
+| POST | `/api/reports/{id}` | Generate executive Markdown report |
 | GET | `/api/analytics/overview` | Dashboard metrics |
 
 ## Ingestion
+
+Real public feeds (no API key):
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/incidents/ingest/real
+```
+
+This pulls recent earthquake data from the USGS GeoJSON feed, global disaster alerts from GDACS, and crisis reports from ReliefWeb when reachable, then indexes the new sources for RAG chat.
 
 Manual:
 
@@ -119,12 +149,23 @@ curl -X POST http://127.0.0.1:8000/api/incidents/ingest/external \
 
 - **Qdrant** — local `./qdrant_data` or `QDRANT_URL` (Docker)
 - **FastEmbed** — local embeddings (no key required)
+- Chunk-level source indexing with configurable overlap
+- Qdrant index metadata fingerprinting for stale-index detection
 - **OpenAI** — optional richer answers when `OPENAI_API_KEY` is set
 
 Reindex:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/rag/reindex
+```
+
+Useful `.env` knobs:
+
+```bash
+RAG_CHUNK_CHARS=900
+RAG_CHUNK_OVERLAP_CHARS=150
+USE_OPENAI_EMBEDDINGS=false
+OPENAI_API_KEY=
 ```
 
 ## LangGraph agents
@@ -142,6 +183,29 @@ Pipeline: **Research → Verification → Prediction → Strategy → Report**
 - Without key: rule-based fallbacks grounded in incident data
 - Persists agent runs and an executive report per investigation
 
+## ML risk model
+
+The ingestion pipeline uses `sentinel-logistic-risk-v1`, a calibrated local risk model that extracts crisis features and returns:
+
+- `risk_score`
+- `severity`
+- `confidence`
+- `drivers`
+- `feature_importance`
+
+Try it directly:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/ml/risk/predict \
+  -H "Content-Type: application/json" \
+  -d "{\"title\":\"Hospital ransomware outage\",\"text\":\"Multiple hospitals reported emergency outages after a ransomware campaign affected lab and scheduling systems.\",\"category\":\"Cybersecurity\",\"source_credibility\":0.82,\"source_count\":3}"
+```
+
+## Frontend views
+
+- `/` — dashboard, map, charts, RAG chat, active incidents, and investigation trigger
+- `/incidents/[id]` — incident detail, sources, timeline, risk explanation, agent outputs, and report generation
+
 ## Configuration
 
 Copy `backend/.env.example` to `backend/.env`:
@@ -155,5 +219,7 @@ Copy `backend/.env.example` to `backend/.env`:
 - SQLAlchemy models: incidents, sources, timeline, agent runs, reports
 - Startup DB create + seed when empty
 - Vector index sync on startup and after ingest
+- ML-style risk scoring with explainability
 - LangGraph multi-agent investigations
 - Manual, mock, GNews, and NewsAPI ingestion
+- Incident-level executive report generation

@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, HttpUrl
 
 
-ProviderName = Literal["manual", "mock", "gnews", "newsapi"]
+ProviderName = Literal["manual", "mock", "public", "gnews", "newsapi"]
 
 
 class IngestSource(BaseModel):
@@ -15,6 +15,8 @@ class IngestSource(BaseModel):
     raw_text: str = Field(min_length=10)
     category: str | None = Field(default=None, max_length=64)
     location: str | None = Field(default=None, max_length=255)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class IngestRequest(BaseModel):
@@ -43,4 +45,3 @@ class IngestResponse(BaseModel):
     skipped_count: int
     incidents: list[IngestedIncident]
     message: str
-
