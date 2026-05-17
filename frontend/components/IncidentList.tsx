@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, Bot } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { investigateIncident } from "@/lib/api";
 import type { AgentRun, Incident } from "@/lib/types";
@@ -42,6 +43,12 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                 </div>
                 <div className="flex min-w-28 flex-col items-start gap-2 sm:items-end">
                   <span className="text-2xl font-bold text-ink">{incident.risk_score}</span>
+                  <Link
+                    href={`/incidents/${incident.id}`}
+                    className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-slate-50"
+                  >
+                    Details
+                  </Link>
                   <button
                     type="button"
                     onClick={() => runInvestigation(incident.id)}
@@ -85,4 +92,3 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
     </div>
   );
 }
-

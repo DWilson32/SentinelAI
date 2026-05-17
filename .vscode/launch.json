@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: FastAPI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Frontend: Next.js",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": ".\\node_modules\\.bin\\next.CMD dev --hostname 127.0.0.1 --port 3000",
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "NEXT_PUBLIC_API_BASE_URL": "http://127.0.0.1:8000/api"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack: FastAPI + Next.js",
+      "configurations": ["Backend: FastAPI", "Frontend: Next.js"],
+      "stopAll": true
+    }
+  ]
+}

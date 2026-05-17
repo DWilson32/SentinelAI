@@ -4,6 +4,10 @@ from qdrant_client.http import models as qmodels
 from app.core.config import settings
 from app.services.embedding_service import embedding_service
 
+INDEX_METADATA_POINT_ID = "00000000-0000-0000-0000-000000000001"
+SOURCE_CHUNK_RECORD_TYPE = "source_chunk"
+INDEX_METADATA_RECORD_TYPE = "index_metadata"
+
 
 class VectorStore:
     def __init__(self) -> None:
@@ -35,9 +39,23 @@ class VectorStore:
         )
 
     def count(self) -> int:
+        return self.count_chunks()
+
+    def count_chunks(self) -> int:
         if not self.client.collection_exists(settings.qdrant_collection):
             return 0
-        return self.client.count(collection_name=settings.qdrant_collection, exact=True).count
+        return self.client.count(
+            collection_name=settings.qdrant_collection,
+            count_filter=qmodels.Filter(
+                must=[
+                    qmodels.FieldCondition(
+                        key="record_type",
+                        match=qmodels.MatchValue(value=SOURCE_CHUNK_RECORD_TYPE),
+                    )
+                ]
+            ),
+            exact=True,
+        ).count
 
     def reset_collection(self) -> None:
         if self.client.collection_exists(settings.qdrant_collection):
@@ -49,6 +67,36 @@ class VectorStore:
         self.ensure_collection()
         self.client.upsert(collection_name=settings.qdrant_collection, points=points)
 
+    def get_index_metadata(self) -> dict | None:
+        if not self.client.collection_exists(settings.qdrant_collection):
+            return None
+        records = self.client.retrieve(
+            collection_name=settings.qdrant_collection,
+            ids=[INDEX_METADATA_POINT_ID],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not records:
+            return None
+        payload = records[0].payload or {}
+        if payload.get("record_type") != INDEX_METADATA_RECORD_TYPE:
+            return None
+        return payload
+
+    def set_index_metadata(self, metadata: dict) -> None:
+        self.ensure_collection()
+        payload = {"record_type": INDEX_METADATA_RECORD_TYPE, **metadata}
+        self.client.upsert(
+            collection_name=settings.qdrant_collection,
+            points=[
+                qmodels.PointStruct(
+                    id=INDEX_METADATA_POINT_ID,
+                    vector=[0.0] * embedding_service.vector_size,
+                    payload=payload,
+                )
+            ],
+        )
+
     def search(
         self,
         query_vector: list[float],
@@ -59,7 +107,12 @@ class VectorStore:
     ) -> list[qmodels.ScoredPoint]:
         if not self.client.collection_exists(settings.qdrant_collection):
             return []
-        filters: list[qmodels.FieldCondition] = []
+        filters: list[qmodels.FieldCondition] = [
+            qmodels.FieldCondition(
+                key="record_type",
+                match=qmodels.MatchValue(value=SOURCE_CHUNK_RECORD_TYPE),
+            )
+        ]
         if category:
             filters.append(
                 qmodels.FieldCondition(key="category", match=qmodels.MatchValue(value=category))

@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -8,6 +9,8 @@ from app.services.embedding_service import embedding_service
 from app.services.incident_service import incident_service
 from app.services.rag_index_service import rag_index_service
 from app.services.vector_store import vector_store
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,8 +92,8 @@ class RagService:
         if settings.openai_api_key:
             try:
                 return self._generate_openai_answer(query, chunks)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("OpenAI RAG answer generation failed; using deterministic fallback: %s", exc)
         return self._compose_answer(query, chunks, top_incident)
 
     def _generate_openai_answer(self, query: str, chunks: list[RetrievedChunk]) -> str:
@@ -101,7 +104,7 @@ class RagService:
             context_blocks.append(
                 f"[{index}] Incident: {chunk.incident_title} ({chunk.severity}, risk {chunk.risk_score:.0f})\n"
                 f"Location: {chunk.location}\n"
-                f"Source: {chunk.title} — {chunk.publisher}\n"
+                f"Source: {chunk.title} - {chunk.publisher}\n"
                 f"Excerpt: {chunk.snippet}"
             )
         context = "\n\n".join(context_blocks)

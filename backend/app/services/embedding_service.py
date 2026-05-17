@@ -26,7 +26,8 @@ class EmbeddingService:
         from openai import OpenAI
 
         client = OpenAI(api_key=settings.openai_api_key)
-        response = client.embeddings.create(model=settings.openai_embedding_model, input=texts)
+        kwargs = {"dimensions": settings.embedding_dimensions} if settings.openai_embedding_model.startswith("text-embedding-3") else {}
+        response = client.embeddings.create(model=settings.openai_embedding_model, input=texts, **kwargs)
         return [item.embedding for item in response.data]
 
 

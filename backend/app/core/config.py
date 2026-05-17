@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4o-mini"
 
     rag_top_k: int = 4
+    rag_chunk_chars: int = 900
+    rag_chunk_overlap_chars: int = 150
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
