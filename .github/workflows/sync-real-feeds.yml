@@ -1,0 +1,16 @@
+name: Sync real crisis feeds
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render feed ingestion
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            https://sentinel-ai-api.onrender.com/api/incidents/ingest/real
