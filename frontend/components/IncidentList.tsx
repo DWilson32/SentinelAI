@@ -10,12 +10,16 @@ import { SeverityBadge } from "@/components/SeverityBadge";
 export function IncidentList({ incidents }: { incidents: Incident[] }) {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function runInvestigation(incidentId: string) {
     setLoadingId(incidentId);
+    setError(null);
     try {
       const result = await investigateIncident(incidentId);
       setRuns(result);
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Investigation failed");
     } finally {
       setLoadingId(null);
     }
@@ -70,11 +74,15 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
           <Bot className="text-sea" size={20} aria-hidden="true" />
         </div>
         {runs.length === 0 ? (
-          <p className="text-sm leading-6 text-muted">
-            Run a LangGraph investigation workflow: research, verification, prediction, strategy, and executive report.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm leading-6 text-muted">
+              Run a LangGraph investigation workflow: research, verification, prediction, strategy, and executive report.
+            </p>
+            {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          </div>
         ) : (
           <div className="space-y-3">
+            {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             {runs.map((run) => (
               <article key={run.id} className="rounded-md border border-line p-3">
                 <div className="flex items-center justify-between gap-2">
