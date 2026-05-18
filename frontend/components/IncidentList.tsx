@@ -12,6 +12,7 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
+  const activeIncident = incidents.find((incident) => incident.id === activeIncidentId);
 
   async function runInvestigation(incidentId: string) {
     setLoadingId(incidentId);
@@ -29,6 +30,16 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      {activeIncidentId && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-md border border-line bg-white p-4 text-sm shadow-lg">
+          <p className="font-semibold text-ink">{activeIncident?.title ?? "Investigation"}</p>
+          {loadingId === activeIncidentId && <p className="mt-1 text-muted">Investigation running...</p>}
+          {error && <p className="mt-1 text-red-700">{error}</p>}
+          {!loadingId && !error && runs.length > 0 && (
+            <p className="mt-1 text-emerald-700">Investigation complete: {runs.length} agent steps generated.</p>
+          )}
+        </div>
+      )}
       <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-ink">Active Incidents</h2>
