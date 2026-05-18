@@ -7,17 +7,23 @@
 3. Render reads `render.yaml` and creates:
    - **sentinel-ai-api** (Python web service)
    - **sentinel-db** (PostgreSQL)
-4. After create, set **Environment** on `sentinel-ai-api`:
+4. The blueprint sets:
 
 | Key | Value |
 |-----|--------|
+| `DATABASE_URL` | Render Postgres connection string |
 | `ALLOWED_ORIGINS` | `https://frontend-rho-five-98.vercel.app` |
+
+5. Optional: after create, set extra **Environment** values on `sentinel-ai-api`:
+
+| Key | Value |
+|-----|--------|
 | `QDRANT_URL` | Your [Qdrant Cloud](https://cloud.qdrant.io) URL (optional but recommended for RAG) |
 | `QDRANT_API_KEY` | Qdrant API key |
 | `OPENAI_API_KEY` | Optional, for LLM chat/agents |
 
-5. Wait for deploy; copy API URL e.g. `https://sentinel-ai-api.onrender.com`
-6. Verify: `https://sentinel-ai-api.onrender.com/health`
+6. Wait for deploy; copy API URL e.g. `https://sentinel-ai-api.onrender.com`
+7. Verify: `https://sentinel-ai-api.onrender.com/health`
 
 ## 2. Frontend on Vercel
 
