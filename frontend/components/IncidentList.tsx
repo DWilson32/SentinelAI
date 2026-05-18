@@ -11,9 +11,11 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
 
   async function runInvestigation(incidentId: string) {
     setLoadingId(incidentId);
+    setActiveIncidentId(incidentId);
     setError(null);
     try {
       const result = await investigateIncident(incidentId);
@@ -56,6 +58,7 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                   <button
                     type="button"
                     onClick={() => runInvestigation(incident.id)}
+                    disabled={loadingId === incident.id}
                     className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                   >
                     <Bot size={16} aria-hidden="true" />
@@ -63,6 +66,17 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                   </button>
                 </div>
               </div>
+              {activeIncidentId === incident.id && (
+                <div className="mt-3 rounded-md border border-line bg-slate-50 p-3 text-sm">
+                  {loadingId === incident.id && <p className="font-semibold text-ink">Investigation running...</p>}
+                  {error && <p className="font-semibold text-red-700">{error}</p>}
+                  {!loadingId && !error && runs.length > 0 && (
+                    <p className="font-semibold text-emerald-700">
+                      Investigation complete: {runs.length} agent steps generated. See Agent Activity below.
+                    </p>
+                  )}
+                </div>
+              )}
             </article>
           ))}
         </div>
