@@ -30,7 +30,10 @@ def bootstrap_database() -> None:
     db = SessionLocal()
     try:
         seed_initial_data(db)
-        rag_index_service.sync_all(db)
+        try:
+            rag_index_service.sync_all(db)
+        except Exception:
+            pass  # RAG index optional at startup (e.g. Qdrant not configured yet)
     finally:
         db.close()
 
