@@ -3,8 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.core.config import settings
-from app.db.database import SessionLocal, create_db_tables
-from app.db.seed import seed_initial_data
 
 app = FastAPI(
     title="SentinelAI API",
@@ -21,16 +19,6 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
-
-
-@app.on_event("startup")
-def bootstrap_database() -> None:
-    create_db_tables()
-    db = SessionLocal()
-    try:
-        seed_initial_data(db)
-    finally:
-        db.close()
 
 
 @app.get("/health")

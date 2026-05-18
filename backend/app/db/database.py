@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from threading import Lock
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -19,20 +20,43 @@ connect_args = {"check_same_thread": False} if database_url.startswith("sqlite")
 
 engine = create_engine(database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+_bootstrap_lock = Lock()
+_bootstrapped = False
 
 
 class Base(DeclarativeBase):
     pass
 
 
+def create_db_tables() -> None:
+    Base.metadata.create_all(bind=engine)
+
+
+def bootstrap_database() -> None:
+    global _bootstrapped
+
+    if _bootstrapped:
+        return
+
+    with _bootstrap_lock:
+        if _bootstrapped:
+            return
+
+        from app.db.seed import seed_initial_data
+
+        create_db_tables()
+        db = SessionLocal()
+        try:
+            seed_initial_data(db)
+            _bootstrapped = True
+        finally:
+            db.close()
+
+
 def get_db() -> Generator[Session, None, None]:
+    bootstrap_database()
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
-
-def create_db_tables() -> None:
-    Base.metadata.create_all(bind=engine)
-
