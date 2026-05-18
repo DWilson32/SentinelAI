@@ -176,10 +176,11 @@ class IngestionService:
 
         db.commit()
         created_ids = [incident.incident_id for incident in incidents if incident.created]
-        try:
-            rag_index_service.index_incidents(db, created_ids)
-        except Exception as exc:
-            logger.warning("Incident ingestion succeeded, but RAG indexing failed: %s", exc)
+        if settings.index_ingested_sources:
+            try:
+                rag_index_service.index_incidents(db, created_ids)
+            except Exception as exc:
+                logger.warning("Incident ingestion succeeded, but RAG indexing failed: %s", exc)
         created_count = sum(1 for incident in incidents if incident.created)
         return IngestResponse(
             provider=provider,
