@@ -5,7 +5,6 @@ from app.api.routes import router
 from app.core.config import settings
 from app.db.database import SessionLocal, create_db_tables
 from app.db.seed import seed_initial_data
-from app.services.rag_index_service import rag_index_service
 
 app = FastAPI(
     title="SentinelAI API",
@@ -30,10 +29,6 @@ def bootstrap_database() -> None:
     db = SessionLocal()
     try:
         seed_initial_data(db)
-        try:
-            rag_index_service.sync_all(db)
-        except Exception:
-            pass  # RAG index optional at startup (e.g. Qdrant not configured yet)
     finally:
         db.close()
 
