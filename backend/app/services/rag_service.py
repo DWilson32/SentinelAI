@@ -1,13 +1,16 @@
 import logging
+import re
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models import IncidentModel
 from app.schemas.chat import ChatRequest, ChatResponse, Citation
 from app.services.embedding_service import embedding_service
 from app.services.incident_service import incident_service
-from app.services.rag_index_service import rag_index_service
 from app.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
@@ -29,17 +32,9 @@ class RetrievedChunk:
 
 class RagService:
     def answer(self, db: Session, request: ChatRequest) -> ChatResponse:
-        if vector_store.count() == 0:
-            rag_index_service.sync_all(db)
-
-        query_vector = embedding_service.embed([request.query])[0]
-        hits = vector_store.search(
-            query_vector,
-            limit=settings.rag_top_k,
-            category=request.category,
-            severity=request.severity,
-        )
-        chunks = self._chunks_from_hits(hits)
+        chunks = self._retrieve_vector_chunks(request)
+        if not chunks:
+            chunks = self._retrieve_database_chunks(db, request)
 
         if not chunks:
             return ChatResponse(
@@ -68,6 +63,88 @@ class RagService:
             retrieved_incident_ids=incident_ids,
         )
 
+    def _retrieve_vector_chunks(self, request: ChatRequest) -> list[RetrievedChunk]:
+        if not settings.vector_rag_enabled and not settings.qdrant_url:
+            return []
+        try:
+            if vector_store.count() == 0:
+                return []
+            query_vector = embedding_service.embed([request.query])[0]
+            hits = vector_store.search(
+                query_vector,
+                limit=settings.rag_top_k,
+                category=request.category,
+                severity=request.severity,
+            )
+            return self._chunks_from_hits(hits)
+        except Exception as exc:
+            logger.warning("Vector RAG retrieval failed; using database fallback: %s", exc)
+            return []
+
+    def _retrieve_database_chunks(self, db: Session, request: ChatRequest) -> list[RetrievedChunk]:
+        incidents = (
+            db.scalars(
+                select(IncidentModel)
+                .options(joinedload(IncidentModel.sources))
+                .order_by(IncidentModel.risk_score.desc())
+            )
+            .unique()
+            .all()
+        )
+        terms = self._query_terms(request.query)
+        scored: list[tuple[float, RetrievedChunk]] = []
+
+        for incident in incidents:
+            if request.category and incident.category != request.category:
+                continue
+            if request.severity and incident.severity != request.severity:
+                continue
+
+            for source in incident.sources:
+                haystack = " ".join(
+                    [
+                        incident.title,
+                        incident.category,
+                        incident.location,
+                        incident.summary,
+                        source.title,
+                        source.publisher,
+                        source.raw_text,
+                    ]
+                ).lower()
+                title_haystack = f"{incident.title} {source.title}".lower()
+                term_hits = sum(1 for term in terms if term in haystack)
+                title_hits = sum(1 for term in terms if term in title_haystack)
+                if terms and term_hits == 0:
+                    continue
+                score = min(
+                    0.95,
+                    0.42
+                    + (0.08 * term_hits)
+                    + (0.05 * title_hits)
+                    + min(0.2, incident.risk_score / 500),
+                )
+                scored.append(
+                    (
+                        score,
+                        RetrievedChunk(
+                            incident_id=incident.id,
+                            score=score,
+                            title=source.title,
+                            publisher=source.publisher,
+                            url=source.url,
+                            snippet=self._snippet(source.raw_text or incident.summary, terms),
+                            incident_title=incident.title,
+                            location=incident.location,
+                            severity=incident.severity,
+                            risk_score=incident.risk_score,
+                        ),
+                    )
+                )
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [chunk for _, chunk in scored[: settings.rag_top_k]]
+
     def _chunks_from_hits(self, hits) -> list[RetrievedChunk]:
         chunks: list[RetrievedChunk] = []
         for hit in hits:
@@ -87,6 +164,46 @@ class RagService:
                 )
             )
         return chunks
+
+    def _query_terms(self, query: str) -> list[str]:
+        stop_words = {
+            "a",
+            "an",
+            "and",
+            "are",
+            "for",
+            "from",
+            "how",
+            "in",
+            "is",
+            "of",
+            "on",
+            "or",
+            "the",
+            "to",
+            "what",
+            "which",
+            "with",
+        }
+        return [
+            term
+            for term in re.findall(r"[a-z0-9]+", query.lower())
+            if len(term) > 2 and term not in stop_words
+        ]
+
+    def _snippet(self, text: str, terms: list[str]) -> str:
+        compact = " ".join(text.split())
+        if not compact:
+            return ""
+        lowered = compact.lower()
+        first_match = min((lowered.find(term) for term in terms if term in lowered), default=-1)
+        if first_match < 0:
+            return compact[:700]
+        start = max(0, first_match - 160)
+        end = min(len(compact), first_match + 540)
+        prefix = "..." if start > 0 else ""
+        suffix = "..." if end < len(compact) else ""
+        return f"{prefix}{compact[start:end]}{suffix}"
 
     def _generate_answer(self, query: str, chunks: list[RetrievedChunk], top_incident) -> str:
         if settings.openai_api_key:
@@ -146,7 +263,7 @@ class RagService:
             f"({top.severity}, risk {top.risk_score:.0f}/100). "
             f"{supporting}"
             f"{actions} "
-            f"Grounded in {len(chunks)} source excerpt(s) from the vector index."
+            f"Grounded in {len(chunks)} source excerpt(s) from the retrieval layer."
         )
 
 

@@ -2,6 +2,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.database import get_db
 from app.schemas.agent import AgentRun
 from app.schemas.analytics import AnalyticsOverview
@@ -69,9 +70,24 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
 
 
 @router.post("/rag/reindex")
-def reindex_rag(db: Session = Depends(get_db)) -> dict[str, int]:
-    indexed = rag_index_service.sync_all(db, force=True)
-    return {"indexed_chunks": indexed, "indexed_sources": indexed}
+def reindex_rag(db: Session = Depends(get_db)) -> dict[str, int | str | bool]:
+    if not settings.vector_rag_enabled and not settings.qdrant_url:
+        return {
+            "ok": False,
+            "indexed_chunks": 0,
+            "indexed_sources": 0,
+            "message": "Vector RAG is disabled; database RAG fallback is active.",
+        }
+    try:
+        indexed = rag_index_service.sync_all(db, force=True)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "indexed_chunks": 0,
+            "indexed_sources": 0,
+            "message": f"Vector reindex failed; database RAG fallback remains available: {exc}",
+        }
+    return {"ok": True, "indexed_chunks": indexed, "indexed_sources": indexed}
 
 
 @router.post("/ml/risk/predict", response_model=RiskPrediction)
