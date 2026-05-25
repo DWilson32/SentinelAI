@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 4
     rag_chunk_chars: int = 900
     rag_chunk_overlap_chars: int = 150
+    vector_rag_enabled: bool = False
     index_ingested_sources: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
