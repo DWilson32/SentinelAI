@@ -2,10 +2,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import IncidentModel, SourceModel, TimelineEventModel
-from app.services.seed_data import INCIDENTS
+from app.services.seed_data import INCIDENTS, LEGACY_SEED_INCIDENT_IDS
 
 
 def seed_initial_data(db: Session) -> None:
+    remove_legacy_seed_data(db)
+
     has_incidents = db.scalar(select(IncidentModel.id).limit(1))
     if has_incidents:
         return
@@ -51,4 +53,16 @@ def seed_initial_data(db: Session) -> None:
         ]
         db.add(db_incident)
 
+    db.commit()
+
+
+def remove_legacy_seed_data(db: Session) -> None:
+    legacy_incidents = db.scalars(
+        select(IncidentModel).where(IncidentModel.id.in_(LEGACY_SEED_INCIDENT_IDS))
+    ).all()
+    if not legacy_incidents:
+        return
+
+    for incident in legacy_incidents:
+        db.delete(incident)
     db.commit()
