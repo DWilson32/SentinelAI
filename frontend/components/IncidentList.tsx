@@ -52,14 +52,14 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+    <div>
       {activeIncidentId && (
         <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-md border border-line bg-white p-4 text-sm shadow-lg">
           <p className="font-semibold text-ink">{activeIncident?.title ?? "Investigation"}</p>
           {loadingId === activeIncidentId && <p className="mt-1 text-muted">Investigation running...</p>}
           {error && <p className="mt-1 text-red-700">{error}</p>}
           {!loadingId && !error && runs.length > 0 && (
-            <p className="mt-1 text-emerald-700">Investigation complete: {runs.length} agent steps generated.</p>
+            <p className="mt-1 text-emerald-700">Investigation complete. Open Details to review the agent breakdown.</p>
           )}
         </div>
       )}
@@ -127,7 +127,7 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                   {error && <p className="font-semibold text-red-700">{error}</p>}
                   {!loadingId && !error && runs.length > 0 && (
                     <p className="font-semibold text-emerald-700">
-                      Investigation complete: {runs.length} agent steps generated. See Agent Activity below.
+                      Investigation complete. Open Details to review the agent breakdown.
                     </p>
                   )}
                 </div>
@@ -174,36 +174,6 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
               Next
             </button>
           </nav>
-        )}
-      </section>
-
-      <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-ink">Agent Activity</h2>
-          <Bot className="text-sea" size={20} aria-hidden="true" />
-        </div>
-        {runs.length === 0 ? (
-          <div className="space-y-3">
-            <p className="text-sm leading-6 text-muted">
-              Run a LangGraph investigation workflow: research, verification, prediction, strategy, and executive report.
-            </p>
-            {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {error && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-            {runs.map((run) => (
-              <article key={run.id} className="rounded-md border border-line p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-ink">{run.agent_name}</h3>
-                  <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">{run.status}</span>
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-xs leading-5 text-slate-700">
-                  {JSON.stringify(run.output, null, 2)}
-                </pre>
-              </article>
-            ))}
-          </div>
         )}
       </section>
     </div>
