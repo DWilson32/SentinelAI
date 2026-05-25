@@ -60,7 +60,7 @@ class IngestionService:
             sources = await self._fetch_newsapi(request.query, request.max_results)
         return self._persist_sources(db, request.provider, sources)
 
-    async def ingest_public_feeds(self, db: Session, max_results: int = 12) -> IngestResponse:
+    async def ingest_public_feeds(self, db: Session, max_results: int = 18) -> IngestResponse:
         sources: list[IngestSource] = []
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             source_groups = await self._fetch_public_sources(client, max_results)
@@ -70,9 +70,10 @@ class IngestionService:
 
     async def _fetch_public_sources(self, client: httpx.AsyncClient, max_results: int) -> list[list[IngestSource]]:
         tasks = [
-            self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 2)),
-            self._fetch_gdacs_events(client, max_results=max(3, max_results // 3)),
-            self._fetch_reliefweb_reports(client, max_results=max(3, max_results // 2)),
+            self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 3)),
+            self._fetch_gdacs_events(client, max_results=max(3, max_results // 4)),
+            self._fetch_conflict_news(client, max_results=max(4, max_results // 3)),
+            self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6)),
         ]
         results: list[list[IngestSource]] = []
         for task in tasks:
@@ -341,6 +342,85 @@ class IngestionService:
             )
         return sources
 
+    async def _fetch_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
+        try:
+            return await self._fetch_gdelt_conflict_news(client, max_results)
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("GDELT conflict feed failed; falling back to Google News RSS: %s", exc)
+            return await self._fetch_google_conflict_news(client, max_results)
+
+    async def _fetch_gdelt_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
+        response = await client.get(
+            "https://api.gdeltproject.org/api/v2/doc/doc",
+            params={
+                "query": '("armed conflict" OR airstrike OR "missile attack" OR shelling OR ceasefire)',
+                "mode": "artlist",
+                "format": "json",
+                "sort": "datedesc",
+                "timespan": "24h",
+                "maxrecords": max_results,
+            },
+        )
+        response.raise_for_status()
+        articles = response.json().get("articles", [])
+        sources: list[IngestSource] = []
+        for article in articles[:max_results]:
+            title = str(article.get("title") or "Conflict situation update").strip()
+            url = article.get("url")
+            if not url:
+                continue
+            publisher = str(article.get("domain") or "GDELT indexed publisher")
+            source_country = str(article.get("sourcecountry") or "").strip()
+            context = f" Published by a source in {source_country}." if source_country else ""
+            sources.append(
+                IngestSource(
+                    title=title[:255],
+                    url=url,
+                    publisher=publisher[:128],
+                    published_at=self._parse_gdelt_datetime(article.get("seendate")),
+                    raw_text=(
+                        f"{title}. Conflict-related news coverage indexed by GDELT from {publisher}."
+                        f"{context}"
+                    ),
+                    category="Conflict",
+                    location="Global",
+                )
+            )
+        return sources
+
+    async def _fetch_google_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
+        response = await client.get(
+            "https://news.google.com/rss/search",
+            params={
+                "q": '("armed conflict" OR airstrike OR "missile attack" OR shelling OR ceasefire) when:1d',
+                "hl": "en-US",
+                "gl": "US",
+                "ceid": "US:en",
+            },
+        )
+        response.raise_for_status()
+        root = ET.fromstring(response.text)
+        sources: list[IngestSource] = []
+        for item in root.findall(".//item")[:max_results]:
+            title = self._xml_text(item, "title") or "Conflict situation update"
+            url = self._xml_text(item, "link")
+            if not url:
+                continue
+            publisher = self._xml_text(item, "source") or "Google News indexed publisher"
+            description = self._plain_text(self._xml_text(item, "description") or title)
+            sources.append(
+                IngestSource(
+                    title=title[:255],
+                    url=url,
+                    publisher=publisher[:128],
+                    published_at=self._parse_rfc2822(self._xml_text(item, "pubDate")),
+                    raw_text=f"{title}. Conflict-related news coverage from {publisher}. {description[:500]}",
+                    category="Conflict",
+                    location="Global",
+                )
+            )
+        return sources
+
     async def _fetch_newsapi(self, query: str, max_results: int) -> list[IngestSource]:
         if not settings.news_api_key:
             raise ValueError("NEWS_API_KEY is not configured")
@@ -387,6 +467,14 @@ class IngestionService:
         parsed = parsedate_to_datetime(value)
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
+    def _parse_gdelt_datetime(self, value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
     def _optional_float(self, value: str | None) -> float | None:
         if value in {None, ""}:
             return None
@@ -424,6 +512,7 @@ class IngestionService:
             "Cybersecurity": ["cyber", "ransomware", "malware", "breach", "cve"],
             "Financial": ["market", "bank", "inflation", "liquidity", "default"],
             "Earthquake": ["earthquake", "seismic", "aftershock", "magnitude"],
+            "Conflict": ["war", "armed conflict", "airstrike", "missile", "shelling", "ceasefire", "troops"],
         }
         for category, keywords in keyword_map.items():
             if any(keyword in content for keyword in keywords):
@@ -446,6 +535,7 @@ class IngestionService:
             "Health": ["Increase testing coverage.", "Monitor hospital capacity.", "Publish verified public health guidance."],
             "Cybersecurity": ["Isolate affected systems.", "Check backups and incident logs.", "Notify response teams and leadership."],
             "Earthquake": ["Assess shaking and damage reports.", "Monitor aftershock risk.", "Check transport and utility disruptions."],
+            "Conflict": ["Verify independently reported impacts.", "Track displacement and infrastructure risk.", "Monitor escalation and ceasefire developments."],
         }
         actions = actions_by_category.get(category, ["Verify source credibility.", "Monitor for corroborating reports.", "Prepare an analyst brief."])
         if severity in {"high", "critical"}:

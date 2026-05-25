@@ -34,7 +34,7 @@ export function RealDataSync() {
         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
       >
         <RefreshCw size={16} aria-hidden="true" className={loading ? "animate-spin" : ""} />
-        {loading ? "Syncing" : "Sync real feeds"}
+        {loading ? "Syncing" : "Sync live news"}
       </button>
       {(message || error) && (
         <p className={`max-w-xs text-sm ${error ? "text-red-700" : "text-muted"}`}>

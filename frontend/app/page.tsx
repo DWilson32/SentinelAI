@@ -21,7 +21,7 @@ export default async function Home() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm text-muted">
               <RadioTower size={16} aria-hidden="true" />
-              Public feeds ready
+              Disaster and conflict feeds ready
             </div>
             <RealDataSync />
           </div>

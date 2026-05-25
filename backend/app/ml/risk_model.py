@@ -14,11 +14,12 @@ class CrisisRiskModel:
         "Cybersecurity": 0.52,
         "Financial": 0.42,
         "Earthquake": 0.6,
+        "Conflict": 0.62,
         "General": 0.25,
     }
-    urgency_terms = {"critical", "emergency", "evacuation", "warning", "rapid", "severe", "outage", "ransomware"}
-    infrastructure_terms = {"hospital", "shelter", "power", "road", "bridge", "water", "airport", "school", "bank"}
-    exposure_terms = {"district", "city", "regional", "multiple", "thousands", "population", "residential", "coastal"}
+    urgency_terms = {"critical", "emergency", "evacuation", "warning", "rapid", "severe", "outage", "ransomware", "airstrike", "missile", "shelling"}
+    infrastructure_terms = {"hospital", "shelter", "power", "road", "bridge", "water", "airport", "school", "bank", "civilian"}
+    exposure_terms = {"district", "city", "regional", "multiple", "thousands", "population", "residential", "coastal", "displaced"}
 
     coefficients = {
         "bias": -1.15,
@@ -125,6 +126,7 @@ class CrisisRiskModel:
             "Cybersecurity": ["cyber", "ransomware", "malware", "breach", "cve"],
             "Financial": ["market", "bank", "inflation", "liquidity", "default"],
             "Earthquake": ["earthquake", "seismic", "aftershock"],
+            "Conflict": ["war", "armed conflict", "airstrike", "missile", "shelling", "ceasefire", "troops"],
         }
         for category, keywords in keyword_map.items():
             if any(keyword in content for keyword in keywords):
@@ -133,4 +135,3 @@ class CrisisRiskModel:
 
 
 risk_model = CrisisRiskModel()
-

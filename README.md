@@ -102,7 +102,7 @@ Starts Qdrant, backend, and frontend.
 | GET | `/api/incidents/{id}` | Incident detail |
 | POST | `/api/incidents/ingest` | Manual ingest |
 | POST | `/api/incidents/ingest/mock` | Demo ingest |
-| POST | `/api/incidents/ingest/real` | No-key public feed ingest from USGS + ReliefWeb |
+| POST | `/api/incidents/ingest/real` | Public disaster and conflict feed ingest |
 | POST | `/api/incidents/ingest/external` | GNews / NewsAPI |
 | POST | `/api/chat` | Semantic RAG Q&A |
 | POST | `/api/rag/reindex` | Rebuild vector index |
@@ -121,7 +121,7 @@ Real public feeds (no API key):
 curl -X POST http://127.0.0.1:8000/api/incidents/ingest/real
 ```
 
-This pulls recent earthquake data from the USGS GeoJSON feed, global disaster alerts from GDACS, and crisis reports from ReliefWeb when reachable, then indexes the new sources for RAG chat.
+This pulls recent earthquake data from the USGS GeoJSON feed, global disaster alerts from GDACS, current conflict-related coverage from GDELT with Google News RSS fallback, and crisis reports from ReliefWeb when reachable, then indexes the new sources for RAG chat. No API key is required; unavailable or throttled individual feeds do not block other public sources.
 
 Manual:
 
