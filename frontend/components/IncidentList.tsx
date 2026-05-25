@@ -15,17 +15,26 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
   const [error, setError] = useState<string | null>(null);
   const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [category, setCategory] = useState("All");
   const activeIncident = incidents.find((incident) => incident.id === activeIncidentId);
-  const totalPages = Math.max(1, Math.ceil(incidents.length / INCIDENTS_PER_PAGE));
+  const categories = ["All", ...Array.from(new Set(incidents.map((incident) => incident.category))).sort()];
+  const filteredIncidents =
+    category === "All" ? incidents : incidents.filter((incident) => incident.category === category);
+  const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / INCIDENTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * INCIDENTS_PER_PAGE;
-  const paginatedIncidents = incidents.slice(pageStart, pageStart + INCIDENTS_PER_PAGE);
+  const paginatedIncidents = filteredIncidents.slice(pageStart, pageStart + INCIDENTS_PER_PAGE);
   const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter(
     (pageNumber) => pageNumber === 1 || pageNumber === totalPages || Math.abs(pageNumber - currentPage) <= 2
   );
 
   function changePage(nextPage: number) {
     setPage(Math.min(Math.max(nextPage, 1), totalPages));
+  }
+
+  function changeCategory(nextCategory: string) {
+    setCategory(nextCategory);
+    setPage(1);
   }
 
   async function runInvestigation(incidentId: string) {
@@ -59,10 +68,26 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
           <div>
             <h2 className="text-base font-semibold text-ink">Active Incidents</h2>
             <p className="mt-1 text-sm text-muted">
-              Showing {pageStart + 1}-{Math.min(pageStart + INCIDENTS_PER_PAGE, incidents.length)} of {incidents.length}
+              Showing {filteredIncidents.length === 0 ? 0 : pageStart + 1}-{Math.min(pageStart + INCIDENTS_PER_PAGE, filteredIncidents.length)} of {filteredIncidents.length}
             </p>
           </div>
           <Activity className="text-sea" size={20} aria-hidden="true" />
+        </div>
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Incident types">
+          {categories.map((categoryName) => (
+            <button
+              key={categoryName}
+              type="button"
+              onClick={() => changeCategory(categoryName)}
+              className={`whitespace-nowrap rounded-md border px-3 py-2 text-sm font-semibold ${
+                categoryName === category ? "border-sea bg-sea text-white" : "border-line text-ink hover:bg-slate-50"
+              }`}
+              role="tab"
+              aria-selected={categoryName === category}
+            >
+              {categoryName}
+            </button>
+          ))}
         </div>
         <div className="space-y-3">
           {paginatedIncidents.map((incident) => (
