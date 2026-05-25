@@ -9,6 +9,7 @@ export function ChatPanel() {
   const [query, setQuery] = useState("What is the highest risk incident right now?");
   const [response, setResponse] = useState<ChatResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -16,9 +17,12 @@ export function ChatPanel() {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const result = await askSentinel(query);
       setResponse(result);
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "RAG chat failed");
     } finally {
       setLoading(false);
     }
@@ -42,12 +46,18 @@ export function ChatPanel() {
         />
         <button
           type="submit"
+          disabled={loading}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-sea px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
         >
           <Send size={16} aria-hidden="true" />
           {loading ? "Thinking" : "Ask"}
         </button>
       </form>
+      {error && (
+        <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
       {response && (
         <div className="mt-4 rounded-md border border-line bg-slate-50 p-4">
           <p className="text-sm leading-6 text-slate-800">{response.answer}</p>
@@ -64,4 +74,3 @@ export function ChatPanel() {
     </section>
   );
 }
-
