@@ -7,12 +7,26 @@ import { investigateIncident } from "@/lib/api";
 import type { AgentRun, Incident } from "@/lib/types";
 import { SeverityBadge } from "@/components/SeverityBadge";
 
+const INCIDENTS_PER_PAGE = 10;
+
 export function IncidentList({ incidents }: { incidents: Incident[] }) {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeIncidentId, setActiveIncidentId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const activeIncident = incidents.find((incident) => incident.id === activeIncidentId);
+  const totalPages = Math.max(1, Math.ceil(incidents.length / INCIDENTS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * INCIDENTS_PER_PAGE;
+  const paginatedIncidents = incidents.slice(pageStart, pageStart + INCIDENTS_PER_PAGE);
+  const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter(
+    (pageNumber) => pageNumber === 1 || pageNumber === totalPages || Math.abs(pageNumber - currentPage) <= 2
+  );
+
+  function changePage(nextPage: number) {
+    setPage(Math.min(Math.max(nextPage, 1), totalPages));
+  }
 
   async function runInvestigation(incidentId: string) {
     setLoadingId(incidentId);
@@ -42,11 +56,16 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
       )}
       <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-ink">Active Incidents</h2>
+          <div>
+            <h2 className="text-base font-semibold text-ink">Active Incidents</h2>
+            <p className="mt-1 text-sm text-muted">
+              Showing {pageStart + 1}-{Math.min(pageStart + INCIDENTS_PER_PAGE, incidents.length)} of {incidents.length}
+            </p>
+          </div>
           <Activity className="text-sea" size={20} aria-hidden="true" />
         </div>
         <div className="space-y-3">
-          {incidents.map((incident) => (
+          {paginatedIncidents.map((incident) => (
             <article key={incident.id} className="rounded-md border border-line p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -91,6 +110,46 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
             </article>
           ))}
         </div>
+        {totalPages > 1 && (
+          <nav className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4" aria-label="Incident pages">
+            <button
+              type="button"
+              onClick={() => changePage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {pageNumbers.map((pageNumber, index) => {
+                const previous = pageNumbers[index - 1];
+                return (
+                  <div key={pageNumber} className="flex items-center gap-2">
+                    {previous && pageNumber - previous > 1 && <span className="text-sm text-muted">...</span>}
+                    <button
+                      type="button"
+                      onClick={() => changePage(pageNumber)}
+                      className={`min-w-10 rounded-md border px-3 py-2 text-sm font-semibold ${
+                        pageNumber === currentPage ? "border-sea bg-sea text-white" : "border-line text-ink hover:bg-slate-50"
+                      }`}
+                      aria-current={pageNumber === currentPage ? "page" : undefined}
+                    >
+                      {pageNumber}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => changePage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </nav>
+        )}
       </section>
 
       <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
