@@ -38,7 +38,7 @@ class SourceModel(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     incident_id: Mapped[str] = mapped_column(ForeignKey("incidents.id"), index=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
     publisher: Mapped[str] = mapped_column(String(128), nullable=False)
     credibility_score: Mapped[float] = mapped_column(Float, nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -83,4 +83,3 @@ class ReportModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     incident: Mapped[IncidentModel] = relationship(back_populates="reports")
-

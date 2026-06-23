@@ -1,7 +1,7 @@
 from collections.abc import Generator
 from threading import Lock
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -32,6 +32,15 @@ def create_db_tables() -> None:
     Base.metadata.create_all(bind=engine)
 
 
+def migrate_db_tables() -> None:
+    if not database_url.startswith("postgresql"):
+        return
+
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE sources ALTER COLUMN url TYPE TEXT"))
+        connection.execute(text("ALTER TABLE sources ALTER COLUMN raw_text TYPE TEXT"))
+
+
 def bootstrap_database() -> None:
     global _bootstrapped
 
@@ -45,6 +54,7 @@ def bootstrap_database() -> None:
         from app.db.seed import seed_initial_data
 
         create_db_tables()
+        migrate_db_tables()
         db = SessionLocal()
         try:
             seed_initial_data(db)
