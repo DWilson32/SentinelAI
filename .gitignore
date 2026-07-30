@@ -24,3 +24,7 @@ Thumbs.db
 !.vscode/settings.json
 !.vscode/tasks.json
 frontend/*.log
+
+.vercel
+.env*
+!.env.example

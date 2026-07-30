@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     gnews_api_key: str | None = None
     news_api_key: str | None = None
 
+    # Shared secret guarding ingestion and reindex endpoints. Unset means those
+    # endpoints are disabled rather than public.
+    sentinel_admin_key: str | None = None
+    admin_key_env: str = "SENTINEL_ADMIN_KEY"
+
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
     qdrant_path: str = "./qdrant_data"

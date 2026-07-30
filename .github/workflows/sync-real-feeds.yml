@@ -10,7 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render feed ingestion
+        env:
+          SENTINEL_ADMIN_KEY: ${{ secrets.SENTINEL_ADMIN_KEY }}
         run: |
+          if [ -z "$SENTINEL_ADMIN_KEY" ]; then
+            echo "SENTINEL_ADMIN_KEY repository secret is not set." >&2
+            exit 1
+          fi
           curl --fail --show-error --silent \
             --request POST \
+            --header "X-API-Key: $SENTINEL_ADMIN_KEY" \
             https://sentinel-ai-api.onrender.com/api/incidents/ingest/real

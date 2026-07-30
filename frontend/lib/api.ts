@@ -38,10 +38,21 @@ export function askSentinel(query: string) {
   });
 }
 
-export function syncRealData() {
-  return request<IngestResponse>("/incidents/ingest/real", {
+// Routed through the same-origin proxy at app/api/sync so the admin key stays
+// on the server. Calling the backend directly from the browser would require
+// shipping the key to the client.
+export async function syncRealData() {
+  const response = await fetch("/api/sync", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
   });
+
+  if (!response.ok) {
+    throw new Error(`Sync failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<IngestResponse>;
 }
 
 export function investigateIncident(incidentId: string) {

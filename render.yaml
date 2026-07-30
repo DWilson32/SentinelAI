@@ -18,6 +18,11 @@ services:
           property: connectionString
       - key: ALLOWED_ORIGINS
         value: https://frontend-rho-five-98.vercel.app
+      # Guards ingestion and reindex endpoints. Set in the Render dashboard;
+      # the same value must be set as the Vercel SENTINEL_ADMIN_KEY env var and
+      # the GitHub Actions SENTINEL_ADMIN_KEY repository secret.
+      - key: SENTINEL_ADMIN_KEY
+        sync: false
 
 databases:
   - name: sentinel-db

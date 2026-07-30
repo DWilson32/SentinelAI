@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.security import require_admin_key
 from app.db.database import get_db
 from app.schemas.agent import AgentRun
 from app.schemas.analytics import AnalyticsOverview
@@ -22,6 +23,10 @@ from app.ml.risk_model import risk_model
 
 router = APIRouter()
 
+# Endpoints that write to the database or spend third-party quota. Reads stay
+# public so the dashboard works for anonymous visitors.
+admin_only = [Depends(require_admin_key)]
+
 
 @router.get("/incidents", response_model=list[Incident])
 def list_incidents(db: Session = Depends(get_db)) -> list[Incident]:
@@ -36,17 +41,17 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)) -> IncidentDet
     return incident
 
 
-@router.post("/incidents/ingest", response_model=IngestResponse)
+@router.post("/incidents/ingest", response_model=IngestResponse, dependencies=admin_only)
 async def ingest_incidents(request: IngestRequest, db: Session = Depends(get_db)) -> IngestResponse:
     return await ingestion_service.ingest_manual(db, request)
 
 
-@router.post("/incidents/ingest/mock", response_model=IngestResponse)
+@router.post("/incidents/ingest/mock", response_model=IngestResponse, dependencies=admin_only)
 async def ingest_mock_incidents(db: Session = Depends(get_db)) -> IngestResponse:
     return await ingestion_service.ingest_mock(db)
 
 
-@router.post("/incidents/ingest/real", response_model=IngestResponse)
+@router.post("/incidents/ingest/real", response_model=IngestResponse, dependencies=admin_only)
 async def ingest_real_incidents(db: Session = Depends(get_db)) -> IngestResponse:
     try:
         return await ingestion_service.ingest_public_feeds(db)
@@ -54,7 +59,7 @@ async def ingest_real_incidents(db: Session = Depends(get_db)) -> IngestResponse
         raise HTTPException(status_code=502, detail=f"Public crisis feed failed: {exc}") from exc
 
 
-@router.post("/incidents/ingest/external", response_model=IngestResponse)
+@router.post("/incidents/ingest/external", response_model=IngestResponse, dependencies=admin_only)
 async def ingest_external_incidents(request: ExternalIngestRequest, db: Session = Depends(get_db)) -> IngestResponse:
     try:
         return await ingestion_service.ingest_external(db, request)
@@ -69,7 +74,7 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     return rag_service.answer(db, request)
 
 
-@router.post("/rag/reindex")
+@router.post("/rag/reindex", dependencies=admin_only)
 def reindex_rag(db: Session = Depends(get_db)) -> dict[str, int | str | bool]:
     if not settings.vector_rag_enabled and not settings.qdrant_url:
         return {
