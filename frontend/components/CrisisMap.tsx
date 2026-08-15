@@ -104,6 +104,12 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
   const graticuleLon = [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150];
   const graticuleLat = [-60, -30, 0, 30, 60];
 
+  // Built as one string: JSX drops whitespace around inline expressions, which
+  // previously rendered this as "647 incidentsnot shown".
+  const unmappedNote =
+    `${unmapped.toLocaleString()} ${unmapped === 1 ? "incident" : "incidents"} not shown — ` +
+    `the news feed supplies no coordinates for them.`;
+
   return (
     <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -182,12 +188,7 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
         <span className="ml-auto">Marker size scales with risk score</span>
       </div>
 
-      {unmapped > 0 && (
-        <p className="mt-2 text-xs text-muted">
-          {unmapped.toLocaleString()} incident{unmapped === 1 ? "" : "s"} not shown &mdash; the news
-          feed supplies no coordinates for them.
-        </p>
-      )}
+      {unmapped > 0 && <p className="mt-2 text-xs text-muted">{unmappedNote}</p>}
     </section>
   );
 }
