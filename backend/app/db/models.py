@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -30,6 +30,22 @@ class IncidentModel(Base):
     timeline: Mapped[list["TimelineEventModel"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
     agent_runs: Mapped[list["AgentRunModel"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
     reports: Mapped[list["ReportModel"]] = relationship(back_populates="incident", cascade="all, delete-orphan")
+
+
+class RiskSnapshotModel(Base):
+    """Point-in-time record of fleet-wide risk, written after each ingest.
+
+    The dashboard's risk trend reads these rows. Without them there is no
+    history to plot, since incidents only carry their own timestamps.
+    """
+
+    __tablename__ = "risk_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    active_incidents: Mapped[int] = mapped_column(Integer, nullable=False)
+    critical_incidents: Mapped[int] = mapped_column(Integer, nullable=False)
+    average_risk_score: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class SourceModel(Base):

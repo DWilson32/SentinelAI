@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -14,6 +16,9 @@ class SeverityCount(BaseModel):
 class RiskTrendPoint(BaseModel):
     label: str
     average_risk: float
+    # Present for real recorded snapshots; the client uses it to show when
+    # history is still being collected rather than implying a full window.
+    captured_at: datetime | None = None
 
 
 class AnalyticsOverview(BaseModel):

@@ -183,6 +183,16 @@ class IngestionService:
             except Exception as exc:
                 logger.warning("Incident ingestion succeeded, but RAG indexing failed: %s", exc)
         created_count = sum(1 for incident in incidents if incident.created)
+
+        # Record fleet risk after the data changed, so the dashboard trend is
+        # built from real readings instead of placeholders.
+        try:
+            from app.services.analytics_service import analytics_service
+
+            analytics_service.capture_snapshot(db)
+        except Exception as exc:
+            logger.warning("Risk snapshot capture failed after ingestion: %s", exc)
+
         return IngestResponse(
             provider=provider,
             created_count=created_count,

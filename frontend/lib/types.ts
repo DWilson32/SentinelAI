@@ -48,7 +48,7 @@ export type AnalyticsOverview = {
   average_risk_score: number;
   categories: { category: string; count: number }[];
   severities: { severity: string; count: number }[];
-  risk_trend: { label: string; average_risk: number }[];
+  risk_trend: { label: string; average_risk: number; captured_at?: string | null }[];
 };
 
 export type ChatResponse = {
