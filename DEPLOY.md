@@ -55,3 +55,20 @@ curl -X POST https://sentinel-ai-api.onrender.com/api/rag/reindex
 ## Repo
 
 https://github.com/DWilson32/SentinelAI
+
+## 4. Health checks and monitoring
+
+| Endpoint | Purpose | Behaviour when the database is gone |
+|----------|---------|--------------------------------------|
+| `/health` | Liveness. Render polls this (`healthCheckPath`). | Still **200**, with `"database": "down"` in the body. Failing here would make Render restart the instance in a loop, which cannot revive an expired database. |
+| `/health/deep` | Readiness. Point uptime monitoring here. | **503**, with the underlying error. |
+
+Set up a free uptime monitor (UptimeRobot, Better Stack, Cron-job.org) against:
+
+```
+https://sentinel-ai-api.onrender.com/health/deep
+```
+
+Without this, an expired database is invisible: the liveness probe keeps
+returning 200 while every data route 500s. That failure has gone unnoticed for
+weeks at a time.
