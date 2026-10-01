@@ -18,6 +18,7 @@ from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 from app.services.embedding_service import embedding_service
 from app.services.entity_resolution import Pending, Report, entity_resolver, mostly_latin
 from app.services import geocoder
+from app.services.credibility import apply_evidence, publisher_credibility
 from app.services.feed_status_service import (
     FEEDS,
     GDELT_COOLDOWN,
@@ -219,7 +220,7 @@ class IngestionService:
             place = geocoder.locate(source.title)
             if place is not None:
                 location, latitude, longitude, precision = place.label, place.latitude, place.longitude, place.precision
-        credibility = self._publisher_credibility(provider)
+        credibility = publisher_credibility(source.publisher, str(source.url), provider)
         prediction = risk_model.predict(
             RiskPredictionRequest(
                 title=source.title,
@@ -315,6 +316,7 @@ class IngestionService:
                 description=f"Incident created from {provider} source: {item.source.publisher}.",
             )
         ]
+        apply_evidence(incident)
         return incident
 
     def _add_report(self, incident: IncidentModel, item: "_Prepared", reason: str) -> None:
@@ -336,12 +338,13 @@ class IngestionService:
             incident.location = item.location
             incident.latitude, incident.longitude = item.latitude, item.longitude
             incident.geo_precision = item.geo_precision
+        # More evidence can lift a cap that a single report left in place.
+        apply_evidence(incident)
 
     def _apply_prediction(self, incident: IncidentModel, prediction: RiskPrediction) -> None:
+        # Severity, status and actions follow from the score and the evidence
+        # together: see apply_evidence.
         incident.risk_score = prediction.risk_score
-        incident.severity = prediction.severity
-        incident.status = "investigating" if prediction.severity in {"high", "critical"} else "monitoring"
-        incident.recommended_actions = self._recommended_actions(incident.category, prediction.severity)
         incident.risk_confidence = prediction.confidence
         incident.risk_drivers = prediction.drivers
         incident.feature_importance = prediction.feature_importance
@@ -731,23 +734,6 @@ class IngestionService:
     def _summarize(self, text: str) -> str:
         compact = " ".join(text.split())
         return compact[:280] + ("..." if len(compact) > 280 else "")
-
-    def _recommended_actions(self, category: str, severity: str) -> list[str]:
-        actions_by_category = {
-            "Flood": ["Validate affected districts.", "Prepare evacuation and shelter updates.", "Monitor waterborne disease risk."],
-            "Wildfire": ["Track perimeter growth.", "Prepare evacuation readiness notices.", "Monitor wind and air quality indicators."],
-            "Health": ["Increase testing coverage.", "Monitor hospital capacity.", "Publish verified public health guidance."],
-            "Cybersecurity": ["Isolate affected systems.", "Check backups and incident logs.", "Notify response teams and leadership."],
-            "Earthquake": ["Assess shaking and damage reports.", "Monitor aftershock risk.", "Check transport and utility disruptions."],
-            "Conflict": ["Verify independently reported impacts.", "Track displacement and infrastructure risk.", "Monitor escalation and ceasefire developments."],
-        }
-        actions = actions_by_category.get(category, ["Verify source credibility.", "Monitor for corroborating reports.", "Prepare an analyst brief."])
-        if severity in {"high", "critical"}:
-            return ["Escalate to analyst review."] + actions
-        return actions
-
-    def _publisher_credibility(self, provider: str) -> float:
-        return {"manual": 0.7, "mock": 0.74, "public": 0.82, "gnews": 0.78, "newsapi": 0.78}.get(provider, 0.65)
 
 
 ingestion_service = IngestionService()

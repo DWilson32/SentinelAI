@@ -78,6 +78,7 @@ class IncidentService:
             active=is_active(incident.category, last_activity),
             source_count=source_count,
             geo_precision=incident.geo_precision,
+            severity_note=incident.severity_note,
         )
 
     def _to_detail(self, incident: IncidentModel) -> IncidentDetail:

@@ -38,6 +38,8 @@ class Incident(BaseModel):
     # "reported" by the feed; "city", "region" or "country" when read from the
     # headline; None when not located.
     geo_precision: str | None = None
+    # Set when the evidence caps severity below what the risk score gives.
+    severity_note: str | None = None
 
 
 class TimelineEvent(BaseModel):

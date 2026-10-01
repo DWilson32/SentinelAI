@@ -98,7 +98,7 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <SeverityBadge severity={incident.severity} />
+                    <SeverityBadge severity={incident.severity} note={incident.severity_note} />
                     <span className="text-xs font-medium text-muted">{incident.category}</span>
                     {incident.active === false && (
                       <span

@@ -220,7 +220,29 @@ Pipeline: **Research → Verification → Prediction → Strategy → Report**
 
 ## Risk scoring (heuristic)
 
-The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v1`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure), a category prior and source credibility — but the weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. The dashboard labels it "signal strength" for that reason. Training it needs a labelled evaluation set; see the roadmap.
+The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v2`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure) and a category prior. The weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. The dashboard labels it "signal strength" for that reason. Training it needs a labelled evaluation set; see the roadmap.
+
+Source credibility is deliberately not part of the score. It measures how sure we are of a report, not how bad the event is: in v1 a trusted source raised the risk of minor events. The `source_credibility` request field is still accepted, but it is ignored.
+
+### Credibility and severity
+
+Each source's credibility comes from its publisher, by type of organisation (`backend/app/services/credibility.py`):
+
+| Publisher | Credibility |
+|-----------|-------------|
+| Official and scientific agencies (USGS, GDACS, UN) | 0.95 |
+| Wire services (Reuters, AP, AFP) | 0.90 |
+| Established newsrooms on a published list | 0.80 |
+| Anything else | 0.55 |
+| User-generated platforms (Facebook, X, Telegram, ...) | 0.30 |
+
+Severity is then capped by the evidence behind it:
+
+- **Critical** needs an official or wire source, or two independent reports from recognised sources.
+- **High** needs one recognised source, or two independent reports.
+- Syndicated copies of one story count once.
+
+A lone unverified report that the score would rate critical shows as medium, with the reason. A corroborating report lifts the cap.
 
 It returns:
 

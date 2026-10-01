@@ -46,6 +46,8 @@ from app.db.models import (
     SourceModel,
     TimelineEventModel,
 )
+from app.services.credibility import apply_evidence
+from app.services.headlines import normalized_title
 from app.services.lifecycle import as_utc
 from app.services.vector_store import vector_store
 
@@ -66,7 +68,6 @@ NEWS_MIN_SIMILARITY = 0.92
 _USGS_MAGNITUDE = re.compile(r"^M\s*(\d+(?:\.\d+)?)\b")
 _GDACS_MAGNITUDE = re.compile(r"Magnitude\s+(\d+(?:\.\d+)?)\s*M\b", re.IGNORECASE)
 _GDACS_ORIGIN = re.compile(r"\b(\d{2})/(\d{2})/(\d{4}) (\d{2}):(\d{2}) UTC\b")
-_TITLE_SEPARATOR = re.compile(r"\s[-–—|]\s")
 
 
 @dataclass(frozen=True)
@@ -128,14 +129,6 @@ def origin_time(report: Report) -> datetime:
             day, month, year, hour, minute = map(int, found.groups())
             return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
     return as_utc(report.published_at)
-
-
-def normalized_title(title: str) -> str:
-    """Headline without a trailing " - Publisher", in lower case, letters and
-    digits only — so syndicated copies of one wire story compare equal."""
-    parts = _TITLE_SEPARATOR.split(title)
-    head = " ".join(parts[:-1]) if len(parts) > 1 else title
-    return re.sub(r"[\W_]+", " ", head.casefold()).strip()
 
 
 def mostly_latin(text: str) -> bool:
@@ -393,18 +386,11 @@ class EntityResolver:
             survivor = db.get(IncidentModel, group.survivor_id)
             merged = [db.get(IncidentModel, incident_id) for incident_id, _ in group.members]
 
-            # An incident is as severe as its most severe report.
+            # An incident is as severe as its most severe report; severity
+            # itself is set below, from the merged evidence.
             strongest = max([survivor, *merged], key=lambda item: item.risk_score)
             if strongest is not survivor:
-                for column in (
-                    "risk_score",
-                    "severity",
-                    "status",
-                    "recommended_actions",
-                    "risk_confidence",
-                    "risk_drivers",
-                    "feature_importance",
-                ):
+                for column in ("risk_score", "risk_confidence", "risk_drivers", "feature_importance"):
                     setattr(survivor, column, getattr(strongest, column))
             survivor.updated_at = now
 
@@ -428,6 +414,9 @@ class EntityResolver:
                         description=f"Merged a duplicate incident ({reason}): {title}",
                     )
                 )
+            # The sources moved in bulk, so reload them before weighing the evidence.
+            db.expire(survivor, ["sources"])
+            apply_evidence(survivor)
         db.commit()
 
 

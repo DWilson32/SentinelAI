@@ -32,7 +32,7 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <SeverityBadge severity={incident.severity} />
+                <SeverityBadge severity={incident.severity} note={incident.severity_note} />
                 <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-muted">{incident.category}</span>
                 {/* Shown instead of the stored status, which was set once from severity at
                     ingest ("investigating" for high) and implied work nobody was doing. */}
@@ -72,6 +72,9 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               >
                 Signal strength {(incident.risk_explanation.confidence * 100).toFixed(0)}%
               </p>
+              {incident.severity_note && (
+                <p className="mt-2 max-w-64 text-xs leading-5 text-muted">{incident.severity_note}</p>
+              )}
             </div>
           </div>
         </div>

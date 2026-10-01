@@ -18,6 +18,8 @@ export type Incident = {
   source_count?: number;
   // "reported" by the feed, or read from the headline at "city", "region" or "country" level.
   geo_precision?: string | null;
+  // Set when the evidence caps severity below what the risk score alone gives.
+  severity_note?: string | null;
 };
 
 export type Source = {

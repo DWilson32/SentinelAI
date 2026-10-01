@@ -7,10 +7,16 @@ const styles: Record<Severity, string> = {
   critical: "bg-red-50 text-red-700 ring-red-200",
 };
 
-export function SeverityBadge({ severity }: { severity: Severity }) {
+// `note` explains a severity capped by weak evidence; shown on hover, with a
+// marker so the cap is visible without hovering.
+export function SeverityBadge({ severity, note }: { severity: Severity; note?: string | null }) {
   return (
-    <span className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ring-1 ${styles[severity]}`}>
+    <span
+      className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ring-1 ${styles[severity]}`}
+      title={note ?? undefined}
+    >
       {severity.toUpperCase()}
+      {note ? <span aria-label="capped by evidence">&nbsp;&#8595;</span> : null}
     </span>
   );
 }

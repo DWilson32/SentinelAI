@@ -21,6 +21,9 @@ class IncidentModel(Base):
     # headline at "city", "region" or "country" level. None: not located (0, 0).
     geo_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
     severity: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # Why severity is below what the risk score alone gives, when the evidence
+    # caps it (services/credibility.py). None when it is not capped.
+    severity_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)

@@ -7,15 +7,22 @@ from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 class CrisisRiskModel:
     """Hand-tuned heuristic risk scorer.
 
-    The score is a logistic (sigmoid) function of keyword densities, a category
-    prior and source credibility, but the coefficients are chosen by hand, not
-    learned from labelled outcomes — so this is a heuristic, not a trained model,
-    and its "confidence" is not a calibrated probability. It reflects how
-    decisively the matched keywords push the score, and is highest when the
-    score is most extreme, whether or not the rating is right.
+    The score is a logistic (sigmoid) function of keyword densities and a
+    category prior, but the coefficients are chosen by hand, not learned from
+    labelled outcomes — so this is a heuristic, not a trained model, and its
+    "confidence" is not a calibrated probability. It reflects how decisively
+    the matched keywords push the score, and is highest when the score is most
+    extreme, whether or not the rating is right.
+
+    v2 drops source credibility from the score. It measured how sure we are of
+    a report, not how bad the event is, so a trusted source raised the risk of
+    minor events: GDACS's lowest "green" alerts would have scored high. Every
+    source then carried 0.82, so that term's constant share (0.75 x 0.82) moved
+    into the bias and no score changed. Credibility now decides what severity
+    the evidence supports instead; see services/credibility.py.
     """
 
-    model_name = "sentinel-heuristic-risk-v1"
+    model_name = "sentinel-heuristic-risk-v2"
 
     category_weights = {
         "Flood": 0.58,
@@ -32,25 +39,25 @@ class CrisisRiskModel:
     exposure_terms = {"district", "city", "regional", "multiple", "thousands", "population", "residential", "coastal", "displaced"}
 
     coefficients = {
-        "bias": -1.15,
+        "bias": -0.535,
         "urgency_density": 2.4,
         "infrastructure_density": 1.6,
         "exposure_density": 1.25,
         "category_prior": 1.4,
-        "source_credibility": 0.75,
         "source_volume": 0.42,
         "text_length_signal": 0.28,
     }
 
     def predict(self, request: RiskPredictionRequest) -> RiskPrediction:
         category = request.category or self._infer_category(request.title, request.text)
-        features = self._extract_features(request.title, request.text, category, request.source_credibility, request.source_count)
+        # request.source_credibility is accepted for compatibility but no longer scored.
+        features = self._extract_features(request.title, request.text, category, request.source_count)
         linear_score = self.coefficients["bias"] + sum(
             self.coefficients[name] * value for name, value in features.items()
         )
         probability = 1 / (1 + math.exp(-linear_score))
         risk_score = round(min(100, max(0, probability * 100)), 1)
-        severity = self._severity_from_score(risk_score)
+        severity = self.severity_for(risk_score)
         confidence = self._confidence(probability, features)
         feature_importance = self._feature_importance(features)
         drivers = self._drivers(category, features, severity)
@@ -70,7 +77,6 @@ class CrisisRiskModel:
         title: str,
         text: str,
         category: str,
-        source_credibility: float,
         source_count: int,
     ) -> dict[str, float]:
         content = f"{title} {text}".lower()
@@ -83,7 +89,6 @@ class CrisisRiskModel:
             "infrastructure_density": min(1.0, sum(1 for term in self.infrastructure_terms if term in token_set) / 4),
             "exposure_density": min(1.0, sum(1 for term in self.exposure_terms if term in token_set) / 4),
             "category_prior": self.category_weights.get(category, self.category_weights["General"]),
-            "source_credibility": source_credibility,
             "source_volume": min(1.0, math.log1p(source_count) / math.log(8)),
             "text_length_signal": min(1.0, token_count / 180),
         }
@@ -107,8 +112,6 @@ class CrisisRiskModel:
             drivers.append("Critical infrastructure impact")
         if features["exposure_density"] >= 0.25:
             drivers.append("Population or regional exposure signal")
-        if features["source_credibility"] >= 0.75:
-            drivers.append("Credible source signal")
         if severity in {"high", "critical"}:
             drivers.insert(0, "High model-estimated escalation risk")
         return drivers[:5]
@@ -118,7 +121,7 @@ class CrisisRiskModel:
         evidence_strength = min(1.0, features["urgency_density"] + features["infrastructure_density"] + features["exposure_density"])
         return round(min(0.95, 0.48 + 0.32 * distance_from_boundary + 0.15 * evidence_strength), 2)
 
-    def _severity_from_score(self, score: float) -> str:
+    def severity_for(self, score: float) -> str:
         if score >= 85:
             return "critical"
         if score >= 70:
