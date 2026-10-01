@@ -187,9 +187,11 @@ Pipeline: **Research → Verification → Prediction → Strategy → Report**
 - Without key: rule-based fallbacks grounded in incident data
 - Persists agent runs and an executive report per investigation
 
-## ML risk model
+## Risk scoring (heuristic)
 
-The ingestion pipeline uses `sentinel-logistic-risk-v1`, a calibrated local risk model that extracts crisis features and returns:
+The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v1`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure), a category prior and source credibility — but the weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. The dashboard labels it "signal strength" for that reason. Training it needs a labelled evaluation set; see the roadmap.
+
+It returns:
 
 - `risk_score`
 - `severity`
@@ -223,7 +225,7 @@ Copy `backend/.env.example` to `backend/.env`:
 - SQLAlchemy models: incidents, sources, timeline, agent runs, reports
 - Tables created and seeded on first request
 - New incidents embedded automatically after each ingest
-- ML-style risk scoring with explainability
+- Heuristic risk scoring with per-feature explanations
 - LangGraph multi-agent investigations
 - Manual, mock, GNews, and NewsAPI ingestion
 - Incident-level executive report generation

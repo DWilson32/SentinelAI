@@ -29,9 +29,26 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               <p className="mt-2 text-sm text-muted">{incident.location}</p>
             </div>
             <div className="rounded-lg border border-line bg-panel p-4 shadow-soft lg:min-w-56">
-              <p className="text-sm text-muted">Risk Score</p>
+              <p className="flex items-center gap-2 text-sm text-muted">
+                {/* An explicit space: flex gap only spaces it visually, so without this
+                    the text reads "Risk Scoreheuristic" to copy-paste and screen readers. */}
+                Risk Score{" "}
+                <span
+                  className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted"
+                  title="Weights are hand-tuned, not learned from labelled outcomes"
+                >
+                  heuristic
+                </span>
+              </p>
               <p className="mt-1 text-4xl font-bold text-ink">{incident.risk_score}</p>
-              <p className="mt-2 text-sm text-muted">Confidence {(incident.risk_explanation.confidence * 100).toFixed(0)}%</p>
+              {/* The API field is still named "confidence"; it is relabelled here because
+                  it measures how decisive the keyword signal is, not whether the rating is right. */}
+              <p
+                className="mt-2 text-sm text-muted"
+                title="How strongly the matched keywords push the score one way. Not a probability that the rating is correct."
+              >
+                Signal strength {(incident.risk_explanation.confidence * 100).toFixed(0)}%
+              </p>
             </div>
           </div>
         </div>

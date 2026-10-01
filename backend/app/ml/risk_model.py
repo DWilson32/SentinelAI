@@ -5,7 +5,17 @@ from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 
 
 class CrisisRiskModel:
-    model_name = "sentinel-logistic-risk-v1"
+    """Hand-tuned heuristic risk scorer.
+
+    The score is a logistic (sigmoid) function of keyword densities, a category
+    prior and source credibility, but the coefficients are chosen by hand, not
+    learned from labelled outcomes — so this is a heuristic, not a trained model,
+    and its "confidence" is not a calibrated probability. It reflects how
+    decisively the matched keywords push the score, and is highest when the
+    score is most extreme, whether or not the rating is right.
+    """
+
+    model_name = "sentinel-heuristic-risk-v1"
 
     category_weights = {
         "Flood": 0.58,
