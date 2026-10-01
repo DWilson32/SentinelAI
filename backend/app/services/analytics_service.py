@@ -4,8 +4,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import IncidentModel, RiskSnapshotModel
+from app.db.models import RiskSnapshotModel
 from app.schemas.analytics import AnalyticsOverview, CategoryCount, RiskTrendPoint, SeverityCount
+from app.services.incident_service import incident_service
 
 # A snapshot is only written if the newest one is older than this, so a burst of
 # ingests does not flood the trend with near-identical points.
@@ -18,19 +19,24 @@ TREND_MAX_POINTS = 12
 
 class AnalyticsService:
     def get_overview(self, db: Session) -> AnalyticsOverview:
-        totals = self._current_totals(db)
+        # The summary row and severity chart describe what is happening now, so
+        # they cover active incidents only. The incident list keeps the full record.
+        incidents = incident_service.list_incidents(db)
+        active = [incident for incident in incidents if incident.active]
+        totals = self._totals(incidents, active)
 
         return AnalyticsOverview(
             active_incidents=totals["active_incidents"],
+            tracked_incidents=totals["tracked_incidents"],
             critical_incidents=totals["critical_incidents"],
             average_risk_score=totals["average_risk_score"],
             categories=[
                 CategoryCount(category=category, count=count)
-                for category, count in self._category_counts(db)
+                for category, count in Counter(i.category for i in active).most_common()
             ],
             severities=[
                 SeverityCount(severity=severity, count=count)
-                for severity, count in self._severity_counts(db)
+                for severity, count in self._ordered_severities(active)
             ],
             risk_trend=self._risk_trend(db, totals),
         )
@@ -63,37 +69,23 @@ class AnalyticsService:
         return snapshot
 
     def _current_totals(self, db: Session) -> dict:
-        total = db.scalar(select(func.count(IncidentModel.id))) or 0
-        critical = (
-            db.scalar(
-                select(func.count(IncidentModel.id)).where(IncidentModel.severity == "critical")
-            )
-            or 0
-        )
-        average = db.scalar(select(func.avg(IncidentModel.risk_score)))
+        incidents = incident_service.list_incidents(db)
+        return self._totals(incidents, [incident for incident in incidents if incident.active])
 
+    def _totals(self, incidents: list, active: list) -> dict:
         return {
-            "active_incidents": int(total),
-            "critical_incidents": int(critical),
-            "average_risk_score": round(float(average), 1) if average is not None else 0.0,
+            "active_incidents": len(active),
+            "tracked_incidents": len(incidents),
+            # An old critical does not "require immediate investigation".
+            "critical_incidents": sum(1 for incident in active if incident.severity == "critical"),
+            "average_risk_score": (
+                round(sum(incident.risk_score for incident in active) / len(active), 1) if active else 0.0
+            ),
         }
 
-    def _category_counts(self, db: Session) -> list[tuple[str, int]]:
-        rows = db.execute(
-            select(IncidentModel.category, func.count(IncidentModel.id))
-            .group_by(IncidentModel.category)
-            .order_by(func.count(IncidentModel.id).desc())
-        ).all()
-        return [(str(category), int(count)) for category, count in rows]
-
-    def _severity_counts(self, db: Session) -> list[tuple[str, int]]:
-        rows = db.execute(
-            select(IncidentModel.severity, func.count(IncidentModel.id)).group_by(
-                IncidentModel.severity
-            )
-        ).all()
+    def _ordered_severities(self, incidents: list) -> list[tuple[str, int]]:
         order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-        counts = Counter({str(severity): int(count) for severity, count in rows})
+        counts = Counter(incident.severity for incident in incidents)
         return sorted(counts.items(), key=lambda item: order.get(item[0], 99))
 
     def _risk_trend(self, db: Session, totals: dict) -> list[RiskTrendPoint]:

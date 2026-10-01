@@ -91,12 +91,23 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
         </div>
         <div className="space-y-3">
           {paginatedIncidents.map((incident) => (
-            <article key={incident.id} className="rounded-md border border-line p-4">
+            <article
+              key={incident.id}
+              className={`rounded-md border border-line p-4 ${incident.active === false ? "opacity-70" : ""}`}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <SeverityBadge severity={incident.severity} />
                     <span className="text-xs font-medium text-muted">{incident.category}</span>
+                    {incident.active === false && (
+                      <span
+                        className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-muted"
+                        title="No new reports within its activity window (72 hours; 7 days for floods)"
+                      >
+                        archived
+                      </span>
+                    )}
                   </div>
                   <h3 className="mt-2 text-base font-semibold text-ink">{incident.title}</h3>
                   <p className="mt-1 text-sm text-muted">{incident.location}</p>

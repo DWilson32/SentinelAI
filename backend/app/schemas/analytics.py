@@ -23,6 +23,8 @@ class RiskTrendPoint(BaseModel):
 
 class AnalyticsOverview(BaseModel):
     active_incidents: int
+    # Everything ever ingested; active_incidents is the recently-reported subset.
+    tracked_incidents: int = 0
     critical_incidents: int
     average_risk_score: float
     categories: list[CategoryCount]

@@ -13,6 +13,8 @@ export type Incident = {
   summary: string;
   created_at: string;
   updated_at: string;
+  last_activity_at?: string | null;
+  active?: boolean;
 };
 
 export type Source = {
@@ -44,6 +46,7 @@ export type IncidentDetail = Incident & {
 
 export type AnalyticsOverview = {
   active_incidents: number;
+  tracked_incidents?: number;
   critical_incidents: number;
   average_risk_score: number;
   categories: { category: string; count: number }[];

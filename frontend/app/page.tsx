@@ -32,7 +32,12 @@ export default async function Home() {
 
       <div className="mx-auto grid max-w-7xl gap-5 px-5 py-6">
         <section className="grid gap-4 md:grid-cols-3">
-          <MetricCard label="Active Incidents" value={analytics.active_incidents} detail="Tracked across public and local feeds" icon={RadioTower} />
+          <MetricCard
+            label="Active Incidents"
+            value={analytics.active_incidents}
+            detail={`Reported in the last 72h (floods: 7 days) · ${analytics.tracked_incidents ?? analytics.active_incidents} tracked`}
+            icon={RadioTower}
+          />
           <MetricCard label="Critical Alerts" value={analytics.critical_incidents} detail="Require immediate investigation" icon={AlertTriangle} />
           <MetricCard label="Average Risk" value={analytics.average_risk_score} detail="Composite score across live incidents" icon={Gauge} />
         </section>

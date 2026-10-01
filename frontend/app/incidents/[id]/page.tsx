@@ -23,7 +23,14 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               <div className="flex flex-wrap items-center gap-2">
                 <SeverityBadge severity={incident.severity} />
                 <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-muted">{incident.category}</span>
-                <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-muted">{incident.status}</span>
+                {/* Shown instead of the stored status, which was set once from severity at
+                    ingest ("investigating" for high) and implied work nobody was doing. */}
+                <span
+                  className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-muted"
+                  title="Active while still being reported: 72 hours, or 7 days for floods"
+                >
+                  {incident.active === false ? "archived" : "active"}
+                </span>
               </div>
               <h1 className="mt-3 max-w-4xl text-3xl font-bold text-ink">{incident.title}</h1>
               <p className="mt-2 text-sm text-muted">{incident.location}</p>

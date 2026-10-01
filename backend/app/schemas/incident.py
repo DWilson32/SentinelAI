@@ -30,6 +30,9 @@ class Incident(BaseModel):
     summary: str
     created_at: datetime
     updated_at: datetime
+    # Newest source publication time; decides whether the incident is active.
+    last_activity_at: datetime | None = None
+    active: bool = True
 
 
 class TimelineEvent(BaseModel):

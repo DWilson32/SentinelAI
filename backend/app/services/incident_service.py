@@ -1,14 +1,28 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import IncidentModel
+from app.db.models import IncidentModel, SourceModel
+from app.services.lifecycle import as_utc, is_active
 from app.schemas.incident import Incident, IncidentDetail, RiskExplanation, Source, TimelineEvent
 
 
 class IncidentService:
     def list_incidents(self, db: Session) -> list[Incident]:
-        incidents = db.scalars(select(IncidentModel).order_by(IncidentModel.risk_score.desc())).all()
-        return [self._to_incident(incident) for incident in incidents]
+        # Newest source per incident in one grouped subquery, rather than loading
+        # every source or querying once per incident.
+        latest = (
+            select(SourceModel.incident_id, func.max(SourceModel.published_at).label("last_published"))
+            .group_by(SourceModel.incident_id)
+            .subquery()
+        )
+        rows = db.execute(
+            select(IncidentModel, latest.c.last_published)
+            .outerjoin(latest, latest.c.incident_id == IncidentModel.id)
+            .order_by(IncidentModel.risk_score.desc())
+        ).all()
+        incidents = [self._to_incident(incident, last_published) for incident, last_published in rows]
+        # Active first, then by risk, so current events lead the list.
+        return sorted(incidents, key=lambda i: (not i.active, -i.risk_score))
 
     def get_incident(self, db: Session, incident_id: str) -> IncidentDetail | None:
         incident = db.scalar(
@@ -32,7 +46,8 @@ class IncidentService:
         )
         return [self._to_detail(incident) for incident in incidents]
 
-    def _to_incident(self, incident: IncidentModel) -> Incident:
+    def _to_incident(self, incident: IncidentModel, last_published=None) -> Incident:
+        last_activity = as_utc(last_published or incident.created_at)
         return Incident(
             id=incident.id,
             title=incident.title,
@@ -46,11 +61,15 @@ class IncidentService:
             summary=incident.summary,
             created_at=incident.created_at,
             updated_at=incident.updated_at,
+            last_activity_at=last_activity,
+            active=is_active(incident.category, last_activity),
         )
 
     def _to_detail(self, incident: IncidentModel) -> IncidentDetail:
         return IncidentDetail(
-            **self._to_incident(incident).model_dump(),
+            **self._to_incident(
+                incident, max((src.published_at for src in incident.sources), default=None)
+            ).model_dump(),
             sources=[
                 Source(
                     id=source.id,
