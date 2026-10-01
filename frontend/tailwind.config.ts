@@ -10,7 +10,6 @@ const config: Config = {
         muted: "#64748b",
         line: "#d7dde8",
         signal: "#ef4444",
-        amber: "#f59e0b",
         sea: "#0891b2",
         forest: "#15803d"
       },
