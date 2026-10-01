@@ -182,6 +182,8 @@ class IngestionService:
                 rag_index_service.index_incidents(db, created_ids)
             except Exception as exc:
                 logger.warning("Incident ingestion succeeded, but RAG indexing failed: %s", exc)
+                # Otherwise the aborted transaction makes the snapshot below fail too.
+                db.rollback()
         created_count = sum(1 for incident in incidents if incident.created)
 
         # Record fleet risk after the data changed, so the dashboard trend is

@@ -4,7 +4,7 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/*.db
 backend/sentinel.db
-backend/qdrant_data/
+backend/.model_cache/
 backend/.env
 backend/*.log
 

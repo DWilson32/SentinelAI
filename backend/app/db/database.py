@@ -28,17 +28,39 @@ class Base(DeclarativeBase):
     pass
 
 
+def is_postgres() -> bool:
+    return database_url.startswith("postgresql")
+
+
+def ensure_extensions() -> None:
+    """pgvector must be installed before create_all builds the vector column."""
+    if not is_postgres():
+        return
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+
 def create_db_tables() -> None:
+    ensure_extensions()
     Base.metadata.create_all(bind=engine)
 
 
 def migrate_db_tables() -> None:
-    if not database_url.startswith("postgresql"):
+    if not is_postgres():
         return
 
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE sources ALTER COLUMN url TYPE TEXT"))
         connection.execute(text("ALTER TABLE sources ALTER COLUMN raw_text TYPE TEXT"))
+        # HNSW rather than IVFFlat: it needs no training pass over existing rows,
+        # so it is valid from the first insert and holds recall as the table grows.
+        # vector_cosine_ops matches the normalised bge embeddings.
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_source_chunks_embedding_hnsw "
+                "ON source_chunks USING hnsw (embedding vector_cosine_ops)"
+            )
+        )
 
 
 def bootstrap_database() -> None:

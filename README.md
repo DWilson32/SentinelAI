@@ -8,7 +8,7 @@ SentinelAI monitors crisis incidents, runs multi-agent investigation workflows, 
 
 - **Frontend:** Next.js, TypeScript, Tailwind CSS, Recharts
 - **Backend:** FastAPI, Pydantic, SQLAlchemy (SQLite by default)
-- **RAG:** Qdrant, FastEmbed (`BAAI/bge-small-en-v1.5`)
+- **RAG:** pgvector in Postgres, FastEmbed (`BAAI/bge-small-en-v1.5`, 384-dim)
 - **Agents:** LangGraph (research → verification → prediction → strategy → report)
 - **Optional:** OpenAI for chat answers and agent steps; GNews / NewsAPI for ingest
 - **Planned:** PostgreSQL, Celery, Redis, scikit-learn risk model
@@ -29,7 +29,7 @@ can-you-import-chat-from-chatgpt/
     app/
     components/
     lib/
-  docker-compose.yml   # backend, frontend, qdrant
+  docker-compose.yml   # backend, frontend, postgres+pgvector
 ```
 
 ## Run Locally
@@ -65,15 +65,16 @@ uvicorn app.main:app --reload --port 8000
 
 Defaults:
 
-- SQLite at `backend/sentinel.db`
-- Qdrant vectors at `backend/qdrant_data/`
-- Auto-seed + vector index sync on startup
+- SQLite at `backend/sentinel.db` — chat uses **keyword** retrieval here, since SQLite has no pgvector
+- Tables are created and seeded on first request
 
-PostgreSQL (later):
+For semantic search, point at Postgres with the pgvector extension (production uses Neon):
 
 ```bash
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/sentinel_ai
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 ```
+
+The `vector` extension, the `source_chunks` table and its HNSW index are created automatically.
 
 ### Frontend
 
@@ -91,7 +92,7 @@ Open **http://localhost:3000** (API: **http://127.0.0.1:8000**).
 docker compose up
 ```
 
-Starts Qdrant, backend, and frontend.
+Starts Postgres with pgvector, the backend, and the frontend.
 
 ## API Endpoints
 
@@ -104,8 +105,8 @@ Starts Qdrant, backend, and frontend.
 | POST | `/api/incidents/ingest/mock` | Demo ingest |
 | POST | `/api/incidents/ingest/real` | Public disaster and conflict feed ingest |
 | POST | `/api/incidents/ingest/external` | GNews / NewsAPI |
-| POST | `/api/chat` | Semantic RAG Q&A |
-| POST | `/api/rag/reindex` | Rebuild vector index |
+| POST | `/api/chat` | RAG Q&A — reports whether `semantic` or `keyword` retrieval answered |
+| POST | `/api/rag/reindex` | Sync the vector index (incremental; `?force=true` re-embeds all) |
 | POST | `/api/ml/risk/predict` | Predict severity, confidence, and drivers |
 | POST | `/api/agents/investigate/{id}` | LangGraph investigation |
 | GET | `/api/agents/runs/{id}` | Agent run history |
@@ -147,10 +148,12 @@ curl -X POST http://127.0.0.1:8000/api/incidents/ingest/external \
 
 ## RAG (semantic chat)
 
-- **Qdrant** — local `./qdrant_data` or `QDRANT_URL` (Docker)
-- **FastEmbed** — local embeddings (no key required)
-- Chunk-level source indexing with configurable overlap
-- Qdrant index metadata fingerprinting for stale-index detection
+- **pgvector** — embeddings live in Postgres beside the incidents, in a `source_chunks` table with an HNSW cosine index. One datastore, no separate vector service.
+- **Live joins** — search joins back to incidents, so category, severity and risk are always current rather than copied in at index time
+- **FastEmbed** — local embeddings, no API key. The model is downloaded at build time (`scripts/prefetch_model.py`) so cold starts load it from disk in well under a second
+- **Incremental indexing** — each chunk stores a content hash; a reindex embeds only what changed
+- **Similarity floor** — chunks below `RAG_MIN_SIMILARITY` (0.60, calibrated on live queries) are not cited, so off-topic questions get "nothing found" instead of irrelevant sources
+- **Keyword fallback** — used only when semantic search is unavailable (SQLite, empty index, query error); the response says which path answered
 - **OpenAI** — optional richer answers when `OPENAI_API_KEY` is set
 
 Reindex:
@@ -164,6 +167,7 @@ Useful `.env` knobs:
 ```bash
 RAG_CHUNK_CHARS=900
 RAG_CHUNK_OVERLAP_CHARS=150
+RAG_MIN_SIMILARITY=0.60
 USE_OPENAI_EMBEDDINGS=false
 OPENAI_API_KEY=
 ```
@@ -178,7 +182,7 @@ curl -X POST http://127.0.0.1:8000/api/agents/investigate/inc-001
 
 Pipeline: **Research → Verification → Prediction → Strategy → Report**
 
-- Uses incident sources + vector context when available
+- Uses the incident's own sources, plus semantically similar *other* incidents as context
 - With `OPENAI_API_KEY`: LLM-generated step outputs and executive brief
 - Without key: rule-based fallbacks grounded in incident data
 - Persists agent runs and an executive report per investigation
@@ -212,13 +216,13 @@ Copy `backend/.env.example` to `backend/.env`:
 
 - `OPENAI_API_KEY` — chat + agents
 - `GNEWS_API_KEY` / `NEWS_API_KEY` — external ingest
-- `QDRANT_URL` — remote Qdrant (optional; local path used by default)
+- `DATABASE_URL` — Postgres with pgvector enables semantic search; SQLite falls back to keywords
 
 ## Backend capabilities
 
 - SQLAlchemy models: incidents, sources, timeline, agent runs, reports
-- Startup DB create + seed when empty
-- Vector index sync on startup and after ingest
+- Tables created and seeded on first request
+- New incidents embedded automatically after each ingest
 - ML-style risk scoring with explainability
 - LangGraph multi-agent investigations
 - Manual, mock, GNews, and NewsAPI ingestion

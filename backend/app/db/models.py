@@ -1,8 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import settings
 from app.db.database import Base
 
 
@@ -99,3 +101,30 @@ class ReportModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     incident: Mapped[IncidentModel] = relationship(back_populates="reports")
+
+
+class SourceChunkModel(Base):
+    """One embedded chunk of a source document, stored beside the incident it
+    belongs to.
+
+    Search joins back to incidents for category, severity and risk score rather
+    than copying them in at index time, so a re-scored incident never surfaces
+    with stale values the way a denormalised vector payload would.
+    """
+
+    __tablename__ = "source_chunks"
+
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Lets a resync skip chunks whose text and embedding model are unchanged.
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(settings.embedding_dimensions), nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

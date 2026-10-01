@@ -5,6 +5,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.models import AgentRunModel, IncidentModel, ReportModel
 from app.schemas.agent import AgentRun
 from app.services.embedding_service import embedding_service
@@ -20,7 +21,7 @@ class AgentService:
         if incident is None:
             return []
 
-        rag_context = self._build_rag_context(incident)
+        rag_context = self._build_rag_context(db, incident)
         try:
             from app.agents.investigation_graph import run_investigation
 
@@ -130,30 +131,35 @@ class AgentService:
         ).all()
         return [self._to_schema(run) for run in runs]
 
-    def _build_rag_context(self, incident) -> str:
+    def _build_rag_context(self, db: Session, incident) -> str:
+        """Related incidents, not this one.
+
+        The agents already receive this incident's own sources directly, so
+        retrieving them again adds nothing. What retrieval can contribute is
+        similar events elsewhere — earlier floods in the region, prior quakes on
+        the same fault.
+        """
+        if not vector_store.available:
+            return ""
         try:
-            if vector_store.count() == 0:
+            if vector_store.count(db) == 0:
                 return ""
             query = f"{incident.title} {incident.category} {incident.location} {incident.summary}"
-            hits = vector_store.search(embedding_service.embed([query])[0], limit=4)
-        except Exception:
-            return ""
-        lines = []
-        for hit in hits:
-            payload = hit.payload or {}
-            if str(payload.get("incident_id")) != incident.id and payload.get("incident_id"):
-                continue
-            lines.append(
-                f"- {payload.get('source_title')} ({payload.get('publisher')}): "
-                f"{str(payload.get('snippet', ''))[:220]}"
+            hits = vector_store.search(
+                db,
+                embedding_service.embed([query])[0],
+                limit=4,
+                exclude_incident_id=incident.id,
+                min_similarity=settings.rag_min_similarity,
             )
-        if not lines:
-            for hit in hits[:3]:
-                payload = hit.payload or {}
-                lines.append(
-                    f"- {payload.get('incident_title')}: {str(payload.get('snippet', ''))[:220]}"
-                )
-        return "\n".join(lines) if lines else ""
+        except Exception as exc:
+            logger.warning("RAG context lookup failed; investigating without it: %s", exc)
+            db.rollback()
+            return ""
+        return "\n".join(
+            f"- {hit.incident_title} ({hit.location}, {hit.severity}): {hit.content[:220]}"
+            for hit in hits
+        )
 
     def _to_schema(self, run: AgentRunModel) -> AgentRun:
         return AgentRun(

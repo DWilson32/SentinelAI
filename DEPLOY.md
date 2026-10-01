@@ -18,8 +18,6 @@
 
 | Key | Value |
 |-----|--------|
-| `QDRANT_URL` | Your [Qdrant Cloud](https://cloud.qdrant.io) URL (optional but recommended for RAG) |
-| `QDRANT_API_KEY` | Qdrant API key |
 | `OPENAI_API_KEY` | Optional, for LLM chat/agents |
 
 6. Wait for deploy; copy API URL e.g. `https://sentinel-ai-api.onrender.com`
@@ -56,7 +54,23 @@ curl -X POST https://sentinel-ai-api.onrender.com/api/rag/reindex
 
 https://github.com/DWilson32/SentinelAI
 
-## 4. Health checks and monitoring
+## 4. Semantic search (pgvector)
+
+Vectors live in the same Postgres database as everything else. On first request
+the app creates the `vector` extension, the `source_chunks` table and its HNSW
+index. New incidents are embedded after each ingest; to embed what is already
+there, run once:
+
+```bash
+curl -X POST -H "X-API-Key: $SENTINEL_ADMIN_KEY" \
+  https://sentinel-ai-api.onrender.com/api/rag/reindex
+```
+
+The build command must include `python scripts/prefetch_model.py`. Without it the
+embedding model downloads at runtime, and on the free tier that repeats after
+every spin-down — adding ~40 s to the first chat request each time.
+
+## 5. Health checks and monitoring
 
 | Endpoint | Purpose | Behaviour when the database is gone |
 |----------|---------|--------------------------------------|

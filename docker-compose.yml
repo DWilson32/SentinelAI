@@ -1,10 +1,15 @@
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.12.5
+  # Postgres with pgvector: incidents and their embeddings live in one database.
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
     ports:
-      - "6333:6333"
+      - "5432:5432"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - pg_data:/var/lib/postgresql/data
 
   backend:
     image: python:3.12-slim
@@ -12,12 +17,13 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      QDRANT_URL: http://qdrant:6333
-    command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      DATABASE_URL: postgresql://sentinel:sentinel@db:5432/sentinel
+      SENTINEL_ADMIN_KEY: ${SENTINEL_ADMIN_KEY:-local-dev-only}
+    command: sh -c "pip install -r requirements.txt && python scripts/prefetch_model.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     depends_on:
-      - qdrant
+      - db
 
   frontend:
     image: node:22-slim
@@ -33,4 +39,4 @@ services:
       - backend
 
 volumes:
-  qdrant_storage:
+  pg_data:

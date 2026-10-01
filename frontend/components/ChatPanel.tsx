@@ -33,7 +33,7 @@ export function ChatPanel() {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">RAG Intelligence Chat</h2>
-          <p className="mt-1 text-sm text-muted">Semantic search over indexed sources with citations.</p>
+          <p className="mt-1 text-sm text-muted">Answers grounded in indexed sources, with citations.</p>
         </div>
         <Sparkles className="text-sea" size={20} aria-hidden="true" />
       </div>
@@ -62,7 +62,23 @@ export function ChatPanel() {
         <div className="mt-4 rounded-md border border-line bg-slate-50 p-4">
           <p className="text-sm leading-6 text-slate-800">{response.answer}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-            <span>Confidence {(response.confidence * 100).toFixed(0)}%</span>
+            {response.retrieval && (
+              <span
+                className="rounded bg-white px-2 py-1 font-semibold uppercase tracking-wide ring-1 ring-line"
+                title={
+                  response.retrieval === "semantic"
+                    ? "Matched by meaning using vector embeddings"
+                    : "Matched by keywords — semantic search was unavailable"
+                }
+              >
+                {response.retrieval}
+              </span>
+            )}
+            {response.citations.length > 0 && (
+              <span title="Similarity between your question and the best-matching source, not a probability">
+                Match {(response.confidence * 100).toFixed(0)}%
+              </span>
+            )}
             {response.citations.map((citation) => (
               <a key={citation.url} href={citation.url} className="rounded bg-white px-2 py-1 text-sea ring-1 ring-line">
                 {citation.publisher}

@@ -32,9 +32,15 @@ class RetrievedChunk:
 
 class RagService:
     def answer(self, db: Session, request: ChatRequest) -> ChatResponse:
-        chunks = self._retrieve_vector_chunks(request)
-        if not chunks:
+        # Keyword retrieval is a fallback for when semantic search is unavailable
+        # (SQLite, empty index, query error) — not for when it ran and judged
+        # nothing relevant. Overriding that with a keyword hit on some shared
+        # word would produce a worse answer, not a better one.
+        chunks = self._retrieve_vector_chunks(db, request)
+        retrieval = "semantic"
+        if chunks is None:
             chunks = self._retrieve_database_chunks(db, request)
+            retrieval = "keyword"
 
         if not chunks:
             return ChatResponse(
@@ -45,6 +51,7 @@ class RagService:
                 confidence=0.35,
                 citations=[],
                 retrieved_incident_ids=[],
+                retrieval=retrieval,
             )
 
         citations = [
@@ -54,32 +61,59 @@ class RagService:
         incident_ids = list(dict.fromkeys(chunk.incident_id for chunk in chunks))
         confidence = min(0.95, max(chunk.score for chunk in chunks))
         top_incident = incident_service.get_incident(db, chunks[0].incident_id) if chunks else None
-        answer = self._generate_answer(request.query, chunks, top_incident)
+        answer = self._generate_answer(request.query, chunks, top_incident, retrieval)
 
         return ChatResponse(
             answer=answer,
             confidence=round(confidence, 2),
             citations=citations,
             retrieved_incident_ids=incident_ids,
+            retrieval=retrieval,
         )
 
-    def _retrieve_vector_chunks(self, request: ChatRequest) -> list[RetrievedChunk]:
-        if not settings.vector_rag_enabled and not settings.qdrant_url:
-            return []
+    def _retrieve_vector_chunks(self, db: Session, request: ChatRequest) -> list[RetrievedChunk] | None:
+        """Semantic retrieval over pgvector.
+
+        Returns None when semantic search is unavailable, so the caller falls
+        back to keywords, and [] when it ran but nothing cleared the similarity
+        floor — a genuine "no match" that should be reported as such.
+        """
+        if not vector_store.available:
+            return None
         try:
-            if vector_store.count() == 0:
-                return []
+            if vector_store.count(db) == 0:
+                return None
             query_vector = embedding_service.embed([request.query])[0]
             hits = vector_store.search(
+                db,
                 query_vector,
                 limit=settings.rag_top_k,
                 category=request.category,
                 severity=request.severity,
+                min_similarity=settings.rag_min_similarity,
             )
-            return self._chunks_from_hits(hits)
         except Exception as exc:
-            logger.warning("Vector RAG retrieval failed; using database fallback: %s", exc)
-            return []
+            logger.warning("Vector RAG retrieval failed; using keyword fallback: %s", exc)
+            # A failed statement aborts the Postgres transaction, which would make
+            # the keyword fallback fail on the same session too.
+            db.rollback()
+            return None
+
+        return [
+            RetrievedChunk(
+                incident_id=hit.incident_id,
+                score=hit.similarity,
+                title=hit.source_title,
+                publisher=hit.publisher,
+                url=hit.url,
+                snippet=hit.content[:700],
+                incident_title=hit.incident_title,
+                location=hit.location,
+                severity=hit.severity,
+                risk_score=hit.risk_score,
+            )
+            for hit in hits
+        ]
 
     def _retrieve_database_chunks(self, db: Session, request: ChatRequest) -> list[RetrievedChunk]:
         incidents = (
@@ -145,26 +179,6 @@ class RagService:
         scored.sort(key=lambda item: item[0], reverse=True)
         return [chunk for _, chunk in scored[: settings.rag_top_k]]
 
-    def _chunks_from_hits(self, hits) -> list[RetrievedChunk]:
-        chunks: list[RetrievedChunk] = []
-        for hit in hits:
-            payload = hit.payload or {}
-            chunks.append(
-                RetrievedChunk(
-                    incident_id=str(payload.get("incident_id", "")),
-                    score=float(hit.score or 0.0),
-                    title=str(payload.get("source_title", "")),
-                    publisher=str(payload.get("publisher", "")),
-                    url=str(payload.get("url", "")),
-                    snippet=str(payload.get("snippet", "")),
-                    incident_title=str(payload.get("incident_title", "")),
-                    location=str(payload.get("location", "")),
-                    severity=str(payload.get("severity", "")),
-                    risk_score=float(payload.get("risk_score", 0.0)),
-                )
-            )
-        return chunks
-
     def _query_terms(self, query: str) -> list[str]:
         stop_words = {
             "a",
@@ -205,13 +219,13 @@ class RagService:
         suffix = "..." if end < len(compact) else ""
         return f"{prefix}{compact[start:end]}{suffix}"
 
-    def _generate_answer(self, query: str, chunks: list[RetrievedChunk], top_incident) -> str:
+    def _generate_answer(self, query: str, chunks: list[RetrievedChunk], top_incident, retrieval: str) -> str:
         if settings.openai_api_key:
             try:
                 return self._generate_openai_answer(query, chunks)
             except Exception as exc:
                 logger.warning("OpenAI RAG answer generation failed; using deterministic fallback: %s", exc)
-        return self._compose_answer(query, chunks, top_incident)
+        return self._compose_answer(query, chunks, top_incident, retrieval)
 
     def _generate_openai_answer(self, query: str, chunks: list[RetrievedChunk]) -> str:
         from openai import OpenAI
@@ -246,9 +260,9 @@ class RagService:
             ],
         )
         content = response.choices[0].message.content
-        return content.strip() if content else self._compose_answer(query, chunks, None)
+        return content.strip() if content else self._compose_answer(query, chunks, None, "semantic")
 
-    def _compose_answer(self, query: str, chunks: list[RetrievedChunk], top_incident) -> str:
+    def _compose_answer(self, query: str, chunks: list[RetrievedChunk], top_incident, retrieval: str) -> str:
         top = chunks[0]
         actions = ""
         if top_incident and top_incident.recommended_actions:
@@ -259,7 +273,7 @@ class RagService:
             for chunk in chunks[:2]
         )
         return (
-            f"Semantic retrieval matched your question to '{top.incident_title}' in {top.location} "
+            f"{'Semantic' if retrieval == 'semantic' else 'Keyword'} retrieval matched your question to '{top.incident_title}' in {top.location} "
             f"({top.severity}, risk {top.risk_score:.0f}/100). "
             f"{supporting}"
             f"{actions} "

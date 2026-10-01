@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,4 +20,7 @@ class ChatResponse(BaseModel):
     confidence: float
     citations: list[Citation]
     retrieved_incident_ids: list[str]
+    # Which path produced the answer, so the UI can say so instead of
+    # always claiming semantic search.
+    retrieval: Literal["semantic", "keyword"] = "keyword"
 

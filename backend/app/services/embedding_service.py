@@ -1,13 +1,24 @@
 from functools import lru_cache
+from pathlib import Path
 
 from fastembed import TextEmbedding
 
 from app.core.config import settings
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def model_cache_dir() -> str:
+    """Absolute cache path, resolved against backend/ rather than the working
+    directory, so the build step and the server agree on where the model is."""
+    path = Path(settings.embedding_cache_dir)
+    return str(path if path.is_absolute() else BACKEND_DIR / path)
+
+
 @lru_cache(maxsize=1)
 def _local_model() -> TextEmbedding:
-    return TextEmbedding(model_name=settings.embedding_model)
+    return TextEmbedding(model_name=settings.embedding_model, cache_dir=model_cache_dir())
 
 
 class EmbeddingService:

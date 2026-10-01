@@ -56,6 +56,7 @@ export type ChatResponse = {
   confidence: number;
   citations: { title: string; publisher: string; url: string }[];
   retrieved_incident_ids: string[];
+  retrieval?: "semantic" | "keyword";
 };
 
 export type IngestResponse = {

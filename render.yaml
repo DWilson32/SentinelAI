@@ -6,16 +6,20 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # The prefetch step downloads the embedding model during the build so it is
+    # part of the deploy image. Fetched at runtime instead, it would be lost on
+    # every free-tier spin-down and re-downloaded (~40 s) on each cold start.
+    buildCommand: pip install -r requirements.txt && python scripts/prefetch_model.py
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.8"
+      # Neon Postgres with the pgvector extension, set in the Render dashboard.
+      # This previously pointed at a free Render Postgres, which hard-expires
+      # after 30 days and took the site down three times.
       - key: DATABASE_URL
-        fromDatabase:
-          name: sentinel-db
-          property: connectionString
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://frontend-rho-five-98.vercel.app
       # Guards ingestion and reindex endpoints. Set in the Render dashboard;
@@ -23,9 +27,3 @@ services:
       # the GitHub Actions SENTINEL_ADMIN_KEY repository secret.
       - key: SENTINEL_ADMIN_KEY
         sync: false
-
-databases:
-  - name: sentinel-db
-    plan: free
-    databaseName: sentinel
-    user: sentinel

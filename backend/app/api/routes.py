@@ -19,6 +19,7 @@ from app.services.incident_service import incident_service
 from app.services.rag_index_service import rag_index_service
 from app.services.rag_service import rag_service
 from app.services.report_service import report_service
+from app.services.vector_store import vector_store
 from app.ml.risk_model import risk_model
 
 router = APIRouter()
@@ -75,24 +76,38 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
 
 
 @router.post("/rag/reindex", dependencies=admin_only)
-def reindex_rag(db: Session = Depends(get_db)) -> dict[str, int | str | bool]:
-    if not settings.vector_rag_enabled and not settings.qdrant_url:
+def reindex_rag(force: bool = False, db: Session = Depends(get_db)) -> dict[str, int | str | bool]:
+    """Bring the vector index in line with current incidents.
+
+    Incremental by default — only new or changed chunks are embedded.
+    ?force=true re-embeds everything, e.g. after changing the chunking rules.
+    """
+    if not vector_store.available:
         return {
             "ok": False,
-            "indexed_chunks": 0,
-            "indexed_sources": 0,
-            "message": "Vector RAG is disabled; database RAG fallback is active.",
+            "embedded": 0,
+            "unchanged": 0,
+            "removed": 0,
+            "message": "Semantic search needs Postgres with pgvector; keyword retrieval is active.",
         }
     try:
-        indexed = rag_index_service.sync_all(db, force=True)
+        result = rag_index_service.sync_all(db, force=force)
     except Exception as exc:
+        db.rollback()
         return {
             "ok": False,
-            "indexed_chunks": 0,
-            "indexed_sources": 0,
-            "message": f"Vector reindex failed; database RAG fallback remains available: {exc}",
+            "embedded": 0,
+            "unchanged": 0,
+            "removed": 0,
+            "message": f"Reindex failed; keyword retrieval remains available: {exc}",
         }
-    return {"ok": True, "indexed_chunks": indexed, "indexed_sources": indexed}
+    return {
+        "ok": True,
+        "embedded": result.embedded,
+        "unchanged": result.unchanged,
+        "removed": result.removed,
+        "total": result.total,
+    }
 
 
 @router.post("/ml/risk/predict", response_model=RiskPrediction)

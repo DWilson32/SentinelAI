@@ -1,134 +1,152 @@
-from qdrant_client import QdrantClient
-from qdrant_client.http import models as qmodels
+"""pgvector-backed store for embedded source chunks.
+
+Chunks live in Postgres beside the incidents they belong to, so there is one
+datastore to run and keep alive instead of two. Search joins back to incidents
+for category, severity and risk score, so results always reflect the current
+values rather than whatever was copied in when the chunk was indexed.
+"""
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.services.embedding_service import embedding_service
+from app.db.database import is_postgres
+from app.db.models import IncidentModel, SourceChunkModel, SourceModel
 
-INDEX_METADATA_POINT_ID = "00000000-0000-0000-0000-000000000001"
-SOURCE_CHUNK_RECORD_TYPE = "source_chunk"
-INDEX_METADATA_RECORD_TYPE = "index_metadata"
+_UPSERT_COLUMNS = (
+    "incident_id",
+    "source_id",
+    "chunk_index",
+    "content",
+    "content_sha256",
+    "embedding_model",
+    "embedding",
+    "indexed_at",
+)
+
+
+@dataclass(frozen=True)
+class ChunkHit:
+    incident_id: str
+    similarity: float
+    content: str
+    incident_title: str
+    category: str
+    severity: str
+    location: str
+    risk_score: float
+    source_title: str
+    publisher: str
+    url: str
 
 
 class VectorStore:
-    def __init__(self) -> None:
-        self._client: QdrantClient | None = None
-
     @property
-    def client(self) -> QdrantClient:
-        if self._client is None:
-            if settings.qdrant_url:
-                self._client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-            else:
-                self._client = QdrantClient(path=settings.qdrant_path)
-        return self._client
+    def available(self) -> bool:
+        """Vector search needs Postgres with pgvector.
 
-    def ensure_collection(self) -> None:
-        if self.client.collection_exists(settings.qdrant_collection):
-            info = self.client.get_collection(settings.qdrant_collection)
-            current_size = info.config.params.vectors.size  # type: ignore[union-attr]
-            if current_size != embedding_service.vector_size:
-                self.client.delete_collection(settings.qdrant_collection)
-            else:
-                return
-        self.client.create_collection(
-            collection_name=settings.qdrant_collection,
-            vectors_config=qmodels.VectorParams(
-                size=embedding_service.vector_size,
-                distance=qmodels.Distance.COSINE,
-            ),
-        )
+        SQLite (local development) has neither, so callers fall back to keyword
+        retrieval there rather than failing.
+        """
+        return settings.vector_rag_enabled and is_postgres()
 
-    def count(self) -> int:
-        return self.count_chunks()
-
-    def count_chunks(self) -> int:
-        if not self.client.collection_exists(settings.qdrant_collection):
+    def count(self, db: Session) -> int:
+        if not self.available:
             return 0
-        return self.client.count(
-            collection_name=settings.qdrant_collection,
-            count_filter=qmodels.Filter(
-                must=[
-                    qmodels.FieldCondition(
-                        key="record_type",
-                        match=qmodels.MatchValue(value=SOURCE_CHUNK_RECORD_TYPE),
-                    )
-                ]
-            ),
-            exact=True,
-        ).count
+        return db.scalar(select(func.count()).select_from(SourceChunkModel)) or 0
 
-    def reset_collection(self) -> None:
-        if self.client.collection_exists(settings.qdrant_collection):
-            self.client.delete_collection(settings.qdrant_collection)
+    def fingerprints(self, db: Session) -> dict[str, tuple[str, str]]:
+        """chunk id -> (content hash, embedding model) for everything indexed."""
+        rows = db.execute(
+            select(
+                SourceChunkModel.id,
+                SourceChunkModel.content_sha256,
+                SourceChunkModel.embedding_model,
+            )
+        ).all()
+        return {row.id: (row.content_sha256, row.embedding_model) for row in rows}
 
-    def upsert(self, points: list[qmodels.PointStruct]) -> None:
-        if not points:
+    def upsert(self, db: Session, rows: list[dict]) -> None:
+        if not rows:
             return
-        self.ensure_collection()
-        self.client.upsert(collection_name=settings.qdrant_collection, points=points)
-
-    def get_index_metadata(self) -> dict | None:
-        if not self.client.collection_exists(settings.qdrant_collection):
-            return None
-        records = self.client.retrieve(
-            collection_name=settings.qdrant_collection,
-            ids=[INDEX_METADATA_POINT_ID],
-            with_payload=True,
-            with_vectors=False,
+        stmt = pg_insert(SourceChunkModel).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[SourceChunkModel.id],
+            set_={column: stmt.excluded[column] for column in _UPSERT_COLUMNS},
         )
-        if not records:
-            return None
-        payload = records[0].payload or {}
-        if payload.get("record_type") != INDEX_METADATA_RECORD_TYPE:
-            return None
-        return payload
+        db.execute(stmt)
 
-    def set_index_metadata(self, metadata: dict) -> None:
-        self.ensure_collection()
-        payload = {"record_type": INDEX_METADATA_RECORD_TYPE, **metadata}
-        self.client.upsert(
-            collection_name=settings.qdrant_collection,
-            points=[
-                qmodels.PointStruct(
-                    id=INDEX_METADATA_POINT_ID,
-                    vector=[0.0] * embedding_service.vector_size,
-                    payload=payload,
-                )
-            ],
-        )
+    def delete(self, db: Session, chunk_ids: Iterable[str]) -> int:
+        ids = list(chunk_ids)
+        if not ids:
+            return 0
+        db.execute(delete(SourceChunkModel).where(SourceChunkModel.id.in_(ids)))
+        return len(ids)
 
     def search(
         self,
+        db: Session,
         query_vector: list[float],
         *,
         limit: int,
         category: str | None = None,
         severity: str | None = None,
-    ) -> list[qmodels.ScoredPoint]:
-        if not self.client.collection_exists(settings.qdrant_collection):
-            return []
-        filters: list[qmodels.FieldCondition] = [
-            qmodels.FieldCondition(
-                key="record_type",
-                match=qmodels.MatchValue(value=SOURCE_CHUNK_RECORD_TYPE),
+        exclude_incident_id: str | None = None,
+        min_similarity: float = 0.0,
+    ) -> list[ChunkHit]:
+        distance = SourceChunkModel.embedding.cosine_distance(query_vector)
+        stmt = (
+            select(
+                SourceChunkModel.incident_id,
+                SourceChunkModel.content,
+                IncidentModel.title.label("incident_title"),
+                IncidentModel.category,
+                IncidentModel.severity,
+                IncidentModel.location,
+                IncidentModel.risk_score,
+                SourceModel.title.label("source_title"),
+                SourceModel.publisher,
+                SourceModel.url,
+                distance.label("distance"),
             )
-        ]
-        if category:
-            filters.append(
-                qmodels.FieldCondition(key="category", match=qmodels.MatchValue(value=category))
-            )
-        if severity:
-            filters.append(
-                qmodels.FieldCondition(key="severity", match=qmodels.MatchValue(value=severity))
-            )
-        query_filter = qmodels.Filter(must=filters) if filters else None
-        return self.client.search(
-            collection_name=settings.qdrant_collection,
-            query_vector=query_vector,
-            limit=limit,
-            query_filter=query_filter,
-            with_payload=True,
+            .join(IncidentModel, IncidentModel.id == SourceChunkModel.incident_id)
+            .join(SourceModel, SourceModel.id == SourceChunkModel.source_id)
+            .order_by(distance)
+            .limit(limit)
         )
+        if category:
+            stmt = stmt.where(IncidentModel.category == category)
+        if severity:
+            stmt = stmt.where(IncidentModel.severity == severity)
+        if exclude_incident_id:
+            stmt = stmt.where(SourceChunkModel.incident_id != exclude_incident_id)
+
+        hits: list[ChunkHit] = []
+        for row in db.execute(stmt).all():
+            # cosine distance is 1 - cosine similarity
+            similarity = 1.0 - float(row.distance)
+            if similarity < min_similarity:
+                continue
+            hits.append(
+                ChunkHit(
+                    incident_id=row.incident_id,
+                    similarity=similarity,
+                    content=row.content,
+                    incident_title=row.incident_title,
+                    category=row.category,
+                    severity=row.severity,
+                    location=row.location,
+                    risk_score=float(row.risk_score),
+                    source_title=row.source_title,
+                    publisher=row.publisher,
+                    url=row.url,
+                )
+            )
+        return hits
 
 
 vector_store = VectorStore()
