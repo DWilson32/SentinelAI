@@ -60,6 +60,8 @@ def test_live_headlines(headline, expected):
         # Common words and first names that are also GeoNames places.
         "Nice weather expected for the Victoria Day parade",
         "Los médicos granadinos que conquistan La Revuelta de David Broncano",
+        # A roundup naming three countries has no single place.
+        "World News in Brief: Deadly Myanmar strikes as Malaysia begins deportations, new emergency funding released, Gaza update",
         # Not in Latin script: left for a later step rather than guessed.
         "Обстрел НАН Украины число жертв возросло",
         "Leadership in Crisis: Lessons from Armed Conflict and Devastating Disasters",

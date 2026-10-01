@@ -20,6 +20,7 @@ put in the wrong place. Each was prompted by a live headline:
   never lifts a country over a region: "in Myanmar's Rakhine state" is Rakhine.
 * Names that are also common words or first names (Nice, Mobile, Victoria,
   David, Batman) are not matched at all.
+* A headline naming three or more countries is a roundup, with no one place.
 """
 
 import gzip
@@ -286,6 +287,11 @@ def locate(text: str) -> Place | None:
             score -= 0.5  # a leading capital or country is usually the subject: "Moscow says ..."
         scored.append((score, -position, candidate))
     if not scored:
+        return None
+    # Three or more countries is a roundup or an explainer ("World News in Brief:
+    # Deadly Myanmar strikes as Malaysia begins deportations ... Gaza"), with no
+    # single place to put it.
+    if len({c.country for _, _, c in scored if c.country and c.country not in ACTORS}) >= 3:
         return None
     score, _, best = max(scored, key=lambda item: (item[0], item[1]))
     if score <= 0:
