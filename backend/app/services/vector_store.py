@@ -8,6 +8,7 @@ values rather than whatever was copied in when the chunk was indexed.
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -42,6 +43,15 @@ class ChunkHit:
     source_title: str
     publisher: str
     url: str
+
+
+@dataclass(frozen=True)
+class ReportHit:
+    incident_id: str
+    url: str
+    title: str
+    published_at: datetime
+    similarity: float
 
 
 class VectorStore:
@@ -147,6 +157,60 @@ class VectorStore:
                 )
             )
         return hits
+
+    def nearest_reports(
+        self,
+        db: Session,
+        vector: list[float],
+        *,
+        category: str,
+        published_from: datetime,
+        published_to: datetime,
+        exclude_url_hosts: Iterable[str] = (),
+        limit: int = 3,
+    ) -> list[ReportHit]:
+        """Sources nearest to vector, for matching a whole incoming report.
+
+        Compares first chunks only, so a report is matched as a whole document,
+        as entity resolution was calibrated, rather than on a passage deep inside
+        a long article.
+        """
+        distance = SourceChunkModel.embedding.cosine_distance(vector)
+        stmt = (
+            select(
+                SourceChunkModel.incident_id,
+                SourceModel.url,
+                SourceModel.title,
+                SourceModel.published_at,
+                distance.label("distance"),
+            )
+            .join(IncidentModel, IncidentModel.id == SourceChunkModel.incident_id)
+            .join(SourceModel, SourceModel.id == SourceChunkModel.source_id)
+            .where(SourceChunkModel.chunk_index == 0)
+            .where(IncidentModel.category == category)
+            .where(SourceModel.published_at.between(published_from, published_to))
+            .order_by(distance)
+            .limit(limit)
+        )
+        for host in exclude_url_hosts:
+            stmt = stmt.where(~SourceModel.url.contains(host))
+        return [
+            ReportHit(
+                incident_id=row.incident_id,
+                url=row.url,
+                title=row.title,
+                published_at=row.published_at,
+                similarity=1.0 - float(row.distance),
+            )
+            for row in db.execute(stmt).all()
+        ]
+
+    def first_chunk_vectors(self, db: Session) -> dict[str, list[float]]:
+        """Embedding of each source's first chunk, keyed by source id."""
+        rows = db.execute(
+            select(SourceChunkModel.source_id, SourceChunkModel.embedding).where(SourceChunkModel.chunk_index == 0)
+        ).all()
+        return {row.source_id: [float(x) for x in row.embedding] for row in rows}
 
 
 vector_store = VectorStore()

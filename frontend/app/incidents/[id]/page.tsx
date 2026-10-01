@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft, Bot, ExternalLink, ShieldCheck } from "lucide-react";
 import { ReportPanel } from "@/components/ReportPanel";
 import { SeverityBadge } from "@/components/SeverityBadge";
@@ -7,6 +8,10 @@ import { getAgentRuns, getIncident, getReports } from "@/lib/api";
 export default async function IncidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [incident, runs, reports] = await Promise.all([getIncident(id), getAgentRuns(id), getReports(id)]);
+  // A merged duplicate resolves to the incident it became; move to its address.
+  if (incident.id !== id) {
+    redirect(`/incidents/${incident.id}`);
+  }
 
   const featureEntries = Object.entries(incident.risk_explanation.feature_importance).sort((a, b) => b[1] - a[1]);
 
@@ -114,7 +119,9 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
         </div>
 
         <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
-          <h2 className="text-base font-semibold text-ink">Sources</h2>
+          <h2 className="text-base font-semibold text-ink">
+            Sources <span className="font-normal text-muted">({incident.sources.length})</span>
+          </h2>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {incident.sources.map((source) => (
               <a key={source.id} href={source.url} className="rounded-md border border-line p-3 hover:bg-slate-50">

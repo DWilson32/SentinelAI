@@ -15,6 +15,7 @@ export type Incident = {
   updated_at: string;
   last_activity_at?: string | null;
   active?: boolean;
+  source_count?: number;
 };
 
 export type Source = {
@@ -65,6 +66,7 @@ export type ChatResponse = {
 export type IngestResponse = {
   provider: "manual" | "mock" | "public" | "gnews" | "newsapi";
   created_count: number;
+  matched_count?: number;
   skipped_count: number;
   incidents: {
     incident_id: string;

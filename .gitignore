@@ -5,6 +5,7 @@ backend/**/__pycache__/
 backend/*.db
 backend/sentinel.db
 backend/.model_cache/
+backend/.pytest_cache/
 # Local storage from the pre-pgvector Qdrant setup; no longer used, safe to delete.
 backend/qdrant_data/
 backend/.env

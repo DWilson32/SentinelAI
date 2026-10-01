@@ -70,7 +70,8 @@ class RagIndexService:
         )
 
     def index_incidents(self, db: Session, incident_ids: list[str]) -> int:
-        """Embed just the given incidents — called after an ingest creates them."""
+        """Embed the given incidents' new or changed chunks — called after an
+        ingest creates incidents or adds reports to existing ones."""
         if not vector_store.available or not incident_ids:
             return 0
         incidents = (
@@ -82,10 +83,17 @@ class RagIndexService:
             .unique()
             .all()
         )
-        chunks = self._build_chunks(incidents)
-        self._embed_and_store(db, chunks, self._model_id())
+        model = self._model_id()
+        existing = vector_store.fingerprints(db)
+        chunks = [c for c in self._build_chunks(incidents) if existing.get(c.id) != (c.sha256, model)]
+        self._embed_and_store(db, chunks, model)
         db.commit()
         return len(chunks)
+
+    def first_chunk(self, text: str) -> str:
+        """The chunk a document is matched on as a whole; see entity_resolution."""
+        chunks = self._chunk_text(text)
+        return chunks[0] if chunks else ""
 
     def _embed_and_store(self, db: Session, chunks: list[SourceChunk], model: str) -> None:
         indexed_at = datetime.now(timezone.utc)
@@ -153,18 +161,32 @@ class RagIndexService:
         return chunks
 
     def _document_text(self, incident: IncidentModel, source: SourceModel) -> str:
-        # Severity and risk score are deliberately left out. They are joined in
-        # live at query time, and embedding them would both add noise to semantic
-        # matching and force a re-embed every time an incident is re-scored.
-        return (
-            f"Title: {incident.title}\n"
-            f"Category: {incident.category}\n"
-            f"Location: {incident.location}\n"
-            f"Summary: {incident.summary}\n"
-            f"Source: {source.title}\n"
-            f"Publisher: {source.publisher}\n"
-            f"Content: {source.raw_text}"
+        return document_text(
+            title=incident.title,
+            category=incident.category,
+            location=incident.location,
+            summary=incident.summary,
+            source_title=source.title,
+            publisher=source.publisher,
+            content=source.raw_text,
         )
+
+
+def document_text(
+    *, title: str, category: str, location: str, summary: str, source_title: str, publisher: str, content: str
+) -> str:
+    # Severity and risk score are deliberately left out. They are joined in
+    # live at query time, and embedding them would both add noise to semantic
+    # matching and force a re-embed every time an incident is re-scored.
+    return (
+        f"Title: {title}\n"
+        f"Category: {category}\n"
+        f"Location: {location}\n"
+        f"Summary: {summary}\n"
+        f"Source: {source_title}\n"
+        f"Publisher: {publisher}\n"
+        f"Content: {content}"
+    )
 
 
 rag_index_service = RagIndexService()

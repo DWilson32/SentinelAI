@@ -37,11 +37,15 @@ class IngestedIncident(BaseModel):
     risk_score: float
     source_url: str
     created: bool
+    # True when the report was added to an incident already being tracked.
+    matched: bool = False
 
 
 class IngestResponse(BaseModel):
     provider: ProviderName
     created_count: int
+    # Reports added as further sources of an existing incident (entity resolution).
+    matched_count: int = 0
     skipped_count: int
     incidents: list[IngestedIncident]
     message: str

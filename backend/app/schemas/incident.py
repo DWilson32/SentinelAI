@@ -33,6 +33,8 @@ class Incident(BaseModel):
     # Newest source publication time; decides whether the incident is active.
     last_activity_at: datetime | None = None
     active: bool = True
+    # Reports grouped into this incident by entity resolution.
+    source_count: int = 1
 
 
 class TimelineEvent(BaseModel):

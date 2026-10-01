@@ -146,6 +146,23 @@ curl -X POST http://127.0.0.1:8000/api/incidents/ingest/external \
   -d "{\"provider\":\"gnews\",\"query\":\"flood warning outbreak wildfire\",\"max_results\":5}"
 ```
 
+### Entity resolution
+
+One event is one incident. A report about something already tracked becomes another source of that incident instead of a new one (`backend/app/services/entity_resolution.py`):
+
+- **Earthquakes** match on physical identity: epicentres within 100 km, magnitudes within 0.5, origin times within 5 minutes. This catches USGS and GDACS reporting the same quake while keeping real aftershocks apart.
+- **News** matches a report in the same category from the last 48 hours on an identical headline, or on embedding similarity of at least 0.92. Text that is mostly not in Latin script needs an identical headline, because the embedding model is English-only.
+- **GDACS cyclones and floods** are never matched on text, because their alerts come from templates and different storms read alike. Each has a unique event id in its URL.
+
+The thresholds were set against the live data; the module docstring records the cases. Incidents ingested before this existed can be merged with `python scripts/merge_duplicates.py` (a dry run; add `--apply --backup FILE` to merge). Merged ids stay valid as aliases of the incident they joined.
+
+The rules are covered by tests:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests
+```
+
 ## RAG (semantic chat)
 
 - **pgvector** — embeddings live in Postgres beside the incidents, in a `source_chunks` table with an HNSW cosine index. One datastore, no separate vector service.

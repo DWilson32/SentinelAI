@@ -148,3 +148,18 @@ class FeedStatusModel(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class IncidentAliasModel(Base):
+    """An incident id that entity resolution merged into another incident.
+
+    Kept so that links to the old id still lead to the incident it became.
+    """
+
+    __tablename__ = "incident_aliases"
+
+    alias_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

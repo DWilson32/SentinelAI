@@ -119,26 +119,28 @@ def predict_risk(request: RiskPredictionRequest) -> RiskPrediction:
 
 @router.post("/agents/investigate/{incident_id}", response_model=list[AgentRun])
 def investigate_incident(incident_id: str, db: Session = Depends(get_db)) -> list[AgentRun]:
-    if incident_service.get_incident(db, incident_id) is None:
+    incident = incident_service.get_incident(db, incident_id)
+    if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return agent_service.investigate(db, incident_id)
+    return agent_service.investigate(db, incident.id)
 
 
 @router.get("/agents/runs/{incident_id}", response_model=list[AgentRun])
 def list_agent_runs(incident_id: str, db: Session = Depends(get_db)) -> list[AgentRun]:
-    return agent_service.list_runs(db, incident_id)
+    return agent_service.list_runs(db, incident_service.resolve_id(db, incident_id))
 
 
 @router.get("/reports/{incident_id}", response_model=list[Report])
 def list_reports(incident_id: str, db: Session = Depends(get_db)) -> list[Report]:
-    if incident_service.get_incident(db, incident_id) is None:
+    incident = incident_service.get_incident(db, incident_id)
+    if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    return report_service.list_reports(db, incident_id)
+    return report_service.list_reports(db, incident.id)
 
 
 @router.post("/reports/{incident_id}", response_model=ReportCreateResponse)
 def generate_report(incident_id: str, db: Session = Depends(get_db)) -> ReportCreateResponse:
-    response = report_service.generate_report(db, incident_id)
+    response = report_service.generate_report(db, incident_service.resolve_id(db, incident_id))
     if response is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     return response

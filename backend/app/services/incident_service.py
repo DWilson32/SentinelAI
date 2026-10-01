@@ -1,33 +1,46 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import IncidentModel, SourceModel
+from app.db.models import IncidentAliasModel, IncidentModel, SourceModel
 from app.services.lifecycle import as_utc, is_active
 from app.schemas.incident import Incident, IncidentDetail, RiskExplanation, Source, TimelineEvent
 
 
 class IncidentService:
     def list_incidents(self, db: Session) -> list[Incident]:
-        # Newest source per incident in one grouped subquery, rather than loading
-        # every source or querying once per incident.
+        # Newest source and source count per incident in one grouped subquery,
+        # rather than loading every source or querying once per incident.
         latest = (
-            select(SourceModel.incident_id, func.max(SourceModel.published_at).label("last_published"))
+            select(
+                SourceModel.incident_id,
+                func.max(SourceModel.published_at).label("last_published"),
+                func.count(SourceModel.id).label("source_count"),
+            )
             .group_by(SourceModel.incident_id)
             .subquery()
         )
         rows = db.execute(
-            select(IncidentModel, latest.c.last_published)
+            select(IncidentModel, latest.c.last_published, latest.c.source_count)
             .outerjoin(latest, latest.c.incident_id == IncidentModel.id)
             .order_by(IncidentModel.risk_score.desc())
         ).all()
-        incidents = [self._to_incident(incident, last_published) for incident, last_published in rows]
+        incidents = [
+            self._to_incident(incident, last_published, source_count or 0)
+            for incident, last_published, source_count in rows
+        ]
         # Active first, then by risk, so current events lead the list.
         return sorted(incidents, key=lambda i: (not i.active, -i.risk_score))
 
+    def resolve_id(self, db: Session, incident_id: str) -> str:
+        """The current id for incident_id, following a merge if there was one."""
+        alias = db.get(IncidentAliasModel, incident_id)
+        return alias.incident_id if alias else incident_id
+
     def get_incident(self, db: Session, incident_id: str) -> IncidentDetail | None:
+        """The incident, or the one it was merged into; check the returned id."""
         incident = db.scalar(
             select(IncidentModel)
-            .where(IncidentModel.id == incident_id)
+            .where(IncidentModel.id == self.resolve_id(db, incident_id))
             .options(joinedload(IncidentModel.sources), joinedload(IncidentModel.timeline))
         )
         if incident is None:
@@ -46,7 +59,7 @@ class IncidentService:
         )
         return [self._to_detail(incident) for incident in incidents]
 
-    def _to_incident(self, incident: IncidentModel, last_published=None) -> Incident:
+    def _to_incident(self, incident: IncidentModel, last_published=None, source_count: int = 1) -> Incident:
         last_activity = as_utc(last_published or incident.created_at)
         return Incident(
             id=incident.id,
@@ -63,12 +76,15 @@ class IncidentService:
             updated_at=incident.updated_at,
             last_activity_at=last_activity,
             active=is_active(incident.category, last_activity),
+            source_count=source_count,
         )
 
     def _to_detail(self, incident: IncidentModel) -> IncidentDetail:
         return IncidentDetail(
             **self._to_incident(
-                incident, max((src.published_at for src in incident.sources), default=None)
+                incident,
+                max((src.published_at for src in incident.sources), default=None),
+                len(incident.sources),
             ).model_dump(),
             sources=[
                 Source(

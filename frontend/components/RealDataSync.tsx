@@ -16,7 +16,9 @@ export function RealDataSync() {
     setError(null);
     try {
       const response = await syncRealData();
-      setMessage(`Real feeds synced: ${response.created_count} new, ${response.skipped_count} existing.`);
+      setMessage(
+        `Real feeds synced: ${response.created_count} new, ${response.matched_count ?? 0} added to existing incidents, ${response.skipped_count} already seen.`,
+      );
       router.refresh();
     } catch {
       setError("Real feed sync failed. Check backend network access and try again.");

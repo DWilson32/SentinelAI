@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import re
@@ -13,7 +14,9 @@ from app.core.config import settings
 from app.db.models import IncidentModel, SourceModel, TimelineEventModel
 from app.ml.risk_model import risk_model
 from app.schemas.ingestion import ExternalIngestRequest, IngestRequest, IngestResponse, IngestSource, IngestedIncident
-from app.schemas.risk import RiskPredictionRequest
+from app.schemas.risk import RiskPrediction, RiskPredictionRequest
+from app.services.embedding_service import embedding_service
+from app.services.entity_resolution import Pending, Report, entity_resolver, mostly_latin
 from app.services.feed_status_service import (
     FEEDS,
     GDELT_COOLDOWN,
@@ -23,9 +26,26 @@ from app.services.feed_status_service import (
     feed_status_service,
     short_error,
 )
-from app.services.rag_index_service import rag_index_service
+from app.services.lifecycle import as_utc
+from app.services.rag_index_service import document_text, rag_index_service
+from app.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _Prepared:
+    """A new source with everything derived from it before it is stored."""
+
+    source: IngestSource
+    url: str
+    published_at: datetime
+    category: str
+    location: str
+    summary: str
+    credibility: float
+    prediction: RiskPrediction
+    report: Report
 
 
 class IngestionService:
@@ -110,6 +130,8 @@ class IngestionService:
     def _persist_sources(self, db: Session, provider: str, sources: list[IngestSource]) -> IngestResponse:
         incidents: list[IngestedIncident] = []
         skipped = 0
+        fresh: list[IngestSource] = []
+        seen_urls: set[str] = set()
 
         for source in sources:
             source_url = str(source.url)
@@ -117,97 +139,48 @@ class IngestionService:
             if existing_source is not None:
                 existing_incident = db.get(IncidentModel, existing_source.incident_id)
                 if existing_incident is not None:
-                    incidents.append(
-                        IngestedIncident(
-                            incident_id=existing_incident.id,
-                            title=existing_incident.title,
-                            category=existing_incident.category,
-                            severity=existing_incident.severity,
-                            risk_score=existing_incident.risk_score,
-                            source_url=source_url,
-                            created=False,
-                        )
-                    )
+                    incidents.append(self._ingested(existing_incident, source_url, created=False))
                 skipped += 1
                 continue
+            if source_url in seen_urls:
+                skipped += 1
+                continue
+            seen_urls.add(source_url)
+            fresh.append(source)
 
-            created_at = datetime.now(timezone.utc)
-            published_at = source.published_at or created_at
-            category = source.category or self._infer_category(source.title, source.raw_text)
-            location = source.location or self._infer_location(source.raw_text)
-            model_prediction = risk_model.predict(
-                RiskPredictionRequest(
-                    title=source.title,
-                    text=source.raw_text,
-                    category=category,
-                    source_credibility=self._publisher_credibility(provider),
-                    source_count=1,
-                )
-            )
-            risk_score = model_prediction.risk_score
-            severity = model_prediction.severity
-            incident_id = f"inc-{uuid4().hex[:12]}"
+        prepared = [self._prepare(provider, source) for source in fresh]
+        embeddings = self._match_embeddings(prepared)
+        pending: list[Pending] = []
+        touched: list[str] = []
 
-            incident = IncidentModel(
-                id=incident_id,
-                title=source.title,
-                category=category,
-                location=location,
-                latitude=source.latitude or 0.0,
-                longitude=source.longitude or 0.0,
-                severity=severity,
-                risk_score=risk_score,
-                status="investigating" if severity in {"high", "critical"} else "monitoring",
-                summary=self._summarize(source.raw_text),
-                created_at=created_at,
-                updated_at=created_at,
-                recommended_actions=self._recommended_actions(category, severity),
-                risk_confidence=model_prediction.confidence,
-                risk_drivers=model_prediction.drivers,
-                feature_importance=model_prediction.feature_importance,
-            )
-            incident.sources = [
-                SourceModel(
-                    id=f"src-{uuid4().hex[:12]}",
-                    title=source.title,
-                    url=source_url,
-                    publisher=source.publisher,
-                    credibility_score=self._publisher_credibility(provider),
-                    published_at=published_at,
-                    raw_text=source.raw_text,
-                )
-            ]
-            incident.timeline = [
-                TimelineEventModel(
-                    timestamp=created_at,
-                    label="Ingested",
-                    description=f"Incident created from {provider} source: {source.publisher}.",
-                )
-            ]
-
-            db.add(incident)
-            incidents.append(
-                IngestedIncident(
-                    incident_id=incident.id,
-                    title=incident.title,
-                    category=incident.category,
-                    severity=incident.severity,
-                    risk_score=incident.risk_score,
-                    source_url=source_url,
-                    created=True,
-                )
-            )
+        for item, embedding in zip(prepared, embeddings, strict=True):
+            # One event is one incident: a report about something already
+            # tracked becomes another source of it instead of a new incident.
+            match = entity_resolver.find_match(db, item.report, embedding, pending)
+            if match is not None:
+                incident = db.get(IncidentModel, match.incident_id)
+                self._add_report(incident, item, match.reason)
+                incidents.append(self._ingested(incident, item.url, created=False, matched=True))
+            else:
+                incident = self._new_incident(item, provider)
+                db.add(incident)
+                incidents.append(self._ingested(incident, item.url, created=True))
+            # Later reports in this batch are matched against what was just stored.
+            db.flush()
+            pending.append(Pending(incident.id, item.report, embedding))
+            if incident.id not in touched:
+                touched.append(incident.id)
 
         db.commit()
-        created_ids = [incident.incident_id for incident in incidents if incident.created]
         if settings.index_ingested_sources:
             try:
-                rag_index_service.index_incidents(db, created_ids)
+                rag_index_service.index_incidents(db, touched)
             except Exception as exc:
                 logger.warning("Incident ingestion succeeded, but RAG indexing failed: %s", exc)
                 # Otherwise the aborted transaction makes the snapshot below fail too.
                 db.rollback()
         created_count = sum(1 for incident in incidents if incident.created)
+        matched_count = sum(1 for incident in incidents if incident.matched)
 
         # Record fleet risk after the data changed, so the dashboard trend is
         # built from real readings instead of placeholders.
@@ -221,9 +194,159 @@ class IngestionService:
         return IngestResponse(
             provider=provider,
             created_count=created_count,
+            matched_count=matched_count,
             skipped_count=skipped,
             incidents=incidents,
-            message=f"Ingested {created_count} new incident(s); skipped {skipped} duplicate source(s).",
+            message=(
+                f"Ingested {created_count} new incident(s); added {matched_count} report(s) to "
+                f"existing incidents; skipped {skipped} duplicate source(s)."
+            ),
+        )
+
+    def _prepare(self, provider: str, source: IngestSource) -> "_Prepared":
+        published_at = as_utc(source.published_at) if source.published_at else datetime.now(timezone.utc)
+        category = source.category or self._infer_category(source.title, source.raw_text)
+        credibility = self._publisher_credibility(provider)
+        prediction = risk_model.predict(
+            RiskPredictionRequest(
+                title=source.title,
+                text=source.raw_text,
+                category=category,
+                source_credibility=credibility,
+                source_count=1,
+            )
+        )
+        return _Prepared(
+            source=source,
+            url=str(source.url),
+            published_at=published_at,
+            category=category,
+            location=source.location or self._infer_location(source.raw_text),
+            summary=self._summarize(source.raw_text),
+            credibility=credibility,
+            prediction=prediction,
+            report=Report(
+                url=str(source.url),
+                title=source.title,
+                category=category,
+                published_at=published_at,
+                latitude=source.latitude,
+                longitude=source.longitude,
+            ),
+        )
+
+    def _match_embeddings(self, prepared: list["_Prepared"]) -> list[list[float] | None]:
+        """Embeddings of news reports, for matching them to tracked incidents.
+
+        Built from the same text as each report's first index chunk, so a new
+        report compares like-for-like with stored ones. Skipped where they could
+        not be searched (no pgvector), and for structured feeds and non-Latin
+        text, which never match on text.
+        """
+        result: list[list[float] | None] = [None] * len(prepared)
+        if not vector_store.available:
+            return result
+        wanted = [
+            index
+            for index, item in enumerate(prepared)
+            if not item.report.structured and mostly_latin(item.report.title)
+        ]
+        if not wanted:
+            return result
+        texts = [
+            rag_index_service.first_chunk(
+                document_text(
+                    title=prepared[index].source.title,
+                    category=prepared[index].category,
+                    location=prepared[index].location,
+                    summary=prepared[index].summary,
+                    source_title=prepared[index].source.title,
+                    publisher=prepared[index].source.publisher,
+                    content=prepared[index].source.raw_text,
+                )
+            )
+            for index in wanted
+        ]
+        try:
+            vectors = embedding_service.embed(texts)
+        except Exception as exc:
+            logger.warning("Embedding reports for matching failed; matching on headlines only: %s", exc)
+            return result
+        for index, vector in zip(wanted, vectors, strict=True):
+            result[index] = vector
+        return result
+
+    def _new_incident(self, item: "_Prepared", provider: str) -> IncidentModel:
+        now = datetime.now(timezone.utc)
+        incident = IncidentModel(
+            id=f"inc-{uuid4().hex[:12]}",
+            title=item.source.title,
+            category=item.category,
+            location=item.location,
+            latitude=item.source.latitude or 0.0,
+            longitude=item.source.longitude or 0.0,
+            summary=item.summary,
+            created_at=now,
+            updated_at=now,
+        )
+        self._apply_prediction(incident, item.prediction)
+        incident.sources = [self._source_row(item)]
+        incident.timeline = [
+            TimelineEventModel(
+                timestamp=now,
+                label="Ingested",
+                description=f"Incident created from {provider} source: {item.source.publisher}.",
+            )
+        ]
+        return incident
+
+    def _add_report(self, incident: IncidentModel, item: "_Prepared", reason: str) -> None:
+        now = datetime.now(timezone.utc)
+        incident.sources.append(self._source_row(item))
+        incident.timeline.append(
+            TimelineEventModel(
+                timestamp=now,
+                label="Report added",
+                description=f"{item.source.publisher}: {item.source.title} (matched as {reason}).",
+            )
+        )
+        incident.updated_at = now
+        # An incident is as severe as its most severe report.
+        if item.prediction.risk_score > incident.risk_score:
+            self._apply_prediction(incident, item.prediction)
+
+    def _apply_prediction(self, incident: IncidentModel, prediction: RiskPrediction) -> None:
+        incident.risk_score = prediction.risk_score
+        incident.severity = prediction.severity
+        incident.status = "investigating" if prediction.severity in {"high", "critical"} else "monitoring"
+        incident.recommended_actions = self._recommended_actions(incident.category, prediction.severity)
+        incident.risk_confidence = prediction.confidence
+        incident.risk_drivers = prediction.drivers
+        incident.feature_importance = prediction.feature_importance
+
+    def _source_row(self, item: "_Prepared") -> SourceModel:
+        return SourceModel(
+            id=f"src-{uuid4().hex[:12]}",
+            title=item.source.title,
+            url=item.url,
+            publisher=item.source.publisher,
+            credibility_score=item.credibility,
+            published_at=item.published_at,
+            raw_text=item.source.raw_text,
+        )
+
+    def _ingested(
+        self, incident: IncidentModel, source_url: str, *, created: bool, matched: bool = False
+    ) -> IngestedIncident:
+        return IngestedIncident(
+            incident_id=incident.id,
+            title=incident.title,
+            category=incident.category,
+            severity=incident.severity,
+            risk_score=incident.risk_score,
+            source_url=source_url,
+            created=created,
+            matched=matched,
         )
 
     async def _fetch_gnews(self, query: str, max_results: int) -> list[IngestSource]:

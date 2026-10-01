@@ -108,6 +108,14 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                         archived
                       </span>
                     )}
+                    {(incident.source_count ?? 1) > 1 && (
+                      <span
+                        className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-muted"
+                        title="Separate reports of the same event, grouped into one incident"
+                      >
+                        {incident.source_count} sources
+                      </span>
+                    )}
                   </div>
                   <h3 className="mt-2 text-base font-semibold text-ink">{incident.title}</h3>
                   <p className="mt-1 text-sm text-muted">{incident.location}</p>
