@@ -14,6 +14,13 @@ from app.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
 
+# Investigations kept per incident. Re-running one used to delete the previous
+# run outright, losing the audit trail the agents exist to provide. Keeping every
+# one would let anyone grow the tables without limit through the public
+# endpoints, so beyond this many the oldest are dropped. Reports are kept to the
+# same number.
+KEEP_INVESTIGATIONS = 20
+
 
 class AgentService:
     def investigate(self, db: Session, incident_id: str) -> list[AgentRun]:
@@ -30,11 +37,12 @@ class AgentService:
             logger.exception("LangGraph investigation failed; using fallback workflow: %s", exc)
             steps = self._fallback_steps(incident)
 
-        db.execute(delete(AgentRunModel).where(AgentRunModel.incident_id == incident_id))
-        db.execute(delete(ReportModel).where(ReportModel.incident_id == incident_id))
-
+        # Steps of one investigation share a timestamp and a number; earlier
+        # investigations stay as history. Runs from before numbering count as 1.
+        previous = db.scalars(select(AgentRunModel.input).where(AgentRunModel.incident_id == incident_id)).all()
+        number = max((run_input.get("investigation", 1) for run_input in previous), default=0) + 1
         created_at = datetime.now(timezone.utc)
-        run_input = {"incident_id": incident_id, "title": incident.title, "workflow": "langgraph"}
+        run_input = {"incident_id": incident_id, "title": incident.title, "workflow": "langgraph", "investigation": number}
         models = [
             AgentRunModel(
                 id=f"run-{uuid4()}",
@@ -70,6 +78,8 @@ class AgentService:
                     incident_row.recommended_actions = actions
                     incident_row.updated_at = created_at
 
+        db.flush()
+        prune_history(db, incident_id)
         db.commit()
         return [self._to_schema(run) for run in models]
 
@@ -170,7 +180,26 @@ class AgentService:
             input=run.input,
             output=run.output,
             created_at=run.created_at,
+            investigation=(run.input or {}).get("investigation", 1),
         )
+
+
+def prune_history(db: Session, incident_id: str) -> None:
+    """Drop investigations and reports beyond the newest KEEP_INVESTIGATIONS."""
+    for model in (AgentRunModel, ReportModel):
+        stamps = db.scalars(
+            select(model.created_at)
+            .where(model.incident_id == incident_id)
+            .distinct()
+            .order_by(model.created_at.desc())
+        ).all()
+        if len(stamps) > KEEP_INVESTIGATIONS:
+            oldest_kept = stamps[KEEP_INVESTIGATIONS - 1]
+            db.execute(
+                delete(model)
+                .where(model.incident_id == incident_id, model.created_at < oldest_kept)
+                .execution_options(synchronize_session=False)
+            )
 
 
 agent_service = AgentService()

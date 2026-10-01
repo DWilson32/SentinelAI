@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AgentRunModel, ReportModel
 from app.schemas.report import Report, ReportCreateResponse
-from app.services.agent_service import agent_service
+from app.services.agent_service import agent_service, prune_history
 from app.services.incident_service import incident_service
 
 
@@ -41,6 +41,8 @@ class ReportService:
             created_at=datetime.now(timezone.utc),
         )
         db.add(report)
+        db.flush()
+        prune_history(db, incident_id)
         db.commit()
         db.refresh(report)
         return ReportCreateResponse(report=self._to_schema(report), generated_from_agent_runs=generated_from_agent_runs)

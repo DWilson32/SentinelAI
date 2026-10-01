@@ -92,6 +92,7 @@ export type AgentRun = {
   input: Record<string, unknown>;
   output: Record<string, unknown>;
   created_at: string;
+  investigation?: number;
 };
 
 export type Report = {

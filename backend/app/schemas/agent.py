@@ -14,4 +14,6 @@ class AgentRun(BaseModel):
     input: dict
     output: dict
     created_at: datetime
+    # Which investigation of the incident this step belongs to, counting from 1.
+    investigation: int = 1
 

@@ -4,6 +4,36 @@ import { ArrowLeft, Bot, ExternalLink, ShieldCheck } from "lucide-react";
 import { ReportPanel } from "@/components/ReportPanel";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { getAgentRuns, getIncident, getReports } from "@/lib/api";
+import type { AgentRun } from "@/lib/types";
+
+// Newest first. Re-running an investigation adds to the history instead of
+// replacing it; runs from before investigations were numbered count as 1.
+function byInvestigation(runs: AgentRun[]): [number, AgentRun[]][] {
+  const groups = new Map<number, AgentRun[]>();
+  for (const run of runs) {
+    const number = run.investigation ?? 1;
+    groups.set(number, [...(groups.get(number) ?? []), run]);
+  }
+  return [...groups.entries()].sort((a, b) => b[0] - a[0]);
+}
+
+function InvestigationRuns({ number, runs }: { number: number; runs: AgentRun[] }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {`Investigation ${number} · ${runs[0].created_at.slice(0, 16).replace("T", " ")} UTC`}
+      </p>
+      {runs.map((run) => (
+        <article key={run.id} className="rounded-md border border-line p-3">
+          <p className="text-sm font-semibold text-ink">{run.agent_name}</p>
+          <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-xs leading-5 text-slate-700">
+            {JSON.stringify(run.output, null, 2)}
+          </pre>
+        </article>
+      ))}
+    </div>
+  );
+}
 
 const PLACEMENT: Record<string, string> = {
   city: "located from the headline",
@@ -20,6 +50,7 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   }
 
   const featureEntries = Object.entries(incident.risk_explanation.feature_importance).sort((a, b) => b[1] - a[1]);
+  const investigations = byInvestigation(runs);
 
   return (
     <main className="min-h-screen bg-[#f4f7fb]">
@@ -171,18 +202,23 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               <h2 className="text-base font-semibold text-ink">Agent Runs</h2>
               <Bot className="text-sea" size={20} aria-hidden="true" />
             </div>
-            {runs.length === 0 ? (
+            {investigations.length === 0 ? (
               <p className="mt-3 text-sm text-muted">Run an investigation from the dashboard or generate a report to populate agent outputs.</p>
             ) : (
               <div className="mt-3 space-y-3">
-                {runs.map((run) => (
-                  <article key={run.id} className="rounded-md border border-line p-3">
-                    <p className="text-sm font-semibold text-ink">{run.agent_name}</p>
-                    <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-xs leading-5 text-slate-700">
-                      {JSON.stringify(run.output, null, 2)}
-                    </pre>
-                  </article>
-                ))}
+                <InvestigationRuns number={investigations[0][0]} runs={investigations[0][1]} />
+                {investigations.length > 1 && (
+                  <details className="rounded-md border border-line p-3">
+                    <summary className="cursor-pointer text-sm text-muted">
+                      {`Earlier investigations (${investigations.length - 1})`}
+                    </summary>
+                    <div className="mt-3 space-y-4">
+                      {investigations.slice(1).map(([number, group]) => (
+                        <InvestigationRuns key={number} number={number} runs={group} />
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
             )}
           </section>
