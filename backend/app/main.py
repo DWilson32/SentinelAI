@@ -1,3 +1,8 @@
+import hashlib
+import os
+from functools import lru_cache
+from pathlib import Path
+
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -37,6 +42,22 @@ def _database_reachable() -> tuple[bool, str | None]:
         return False, f"{type(exc).__name__}: {exc}"[:200]
 
 
+@lru_cache(maxsize=1)
+def code_fingerprint() -> str:
+    """A hash of the app's own source files, in a fixed order.
+
+    Render once reported a deploy live while the previous build kept serving.
+    The commit it passes in describes the deploy, not the files on disk, so
+    /health reports this too: compare it with the same hash of the pushed commit.
+    """
+    root = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py"), key=lambda p: p.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     """Liveness probe. Render is configured to poll this endpoint.
@@ -51,6 +72,8 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "service": "sentinel-ai",
         "database": "up" if reachable else "down",
+        "commit": os.environ.get("RENDER_GIT_COMMIT", "")[:7] or "unknown",
+        "code": code_fingerprint(),
     }
     if detail:
         payload["database_error"] = detail
