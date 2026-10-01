@@ -17,6 +17,9 @@ class IncidentModel(Base):
     location: Mapped[str] = mapped_column(String(255), nullable=False)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    # How the coordinates were found: "reported" by the feed, or read from the
+    # headline at "city", "region" or "country" level. None: not located (0, 0).
+    geo_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
     severity: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)

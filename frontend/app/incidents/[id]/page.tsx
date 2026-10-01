@@ -5,6 +5,12 @@ import { ReportPanel } from "@/components/ReportPanel";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { getAgentRuns, getIncident, getReports } from "@/lib/api";
 
+const PLACEMENT: Record<string, string> = {
+  city: "located from the headline",
+  region: "approximate: region named in the headline",
+  country: "approximate: country named in the headline",
+};
+
 export default async function IncidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [incident, runs, reports] = await Promise.all([getIncident(id), getAgentRuns(id), getReports(id)]);
@@ -38,7 +44,12 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                 </span>
               </div>
               <h1 className="mt-3 max-w-4xl text-3xl font-bold text-ink">{incident.title}</h1>
-              <p className="mt-2 text-sm text-muted">{incident.location}</p>
+              <p className="mt-2 text-sm text-muted">
+                {/* One string: JSX would drop the space around an inline expression. */}
+                {PLACEMENT[incident.geo_precision ?? ""]
+                  ? `${incident.location} · ${PLACEMENT[incident.geo_precision ?? ""]}`
+                  : incident.location}
+              </p>
             </div>
             <div className="rounded-lg border border-line bg-panel p-4 shadow-soft lg:min-w-56">
               <p className="flex items-center gap-2 text-sm text-muted">

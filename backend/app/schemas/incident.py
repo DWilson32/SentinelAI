@@ -35,6 +35,9 @@ class Incident(BaseModel):
     active: bool = True
     # Reports grouped into this incident by entity resolution.
     source_count: int = 1
+    # "reported" by the feed; "city", "region" or "country" when read from the
+    # headline; None when not located.
+    geo_precision: str | None = None
 
 
 class TimelineEvent(BaseModel):

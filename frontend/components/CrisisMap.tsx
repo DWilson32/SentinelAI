@@ -89,6 +89,22 @@ function toPath(ring: [number, number][]): string {
   );
 }
 
+// Placed at a region or country named in the headline: drawn hollow, so a
+// country-level guess is not mistaken for a known position.
+const APPROXIMATE = new Set(["region", "country"]);
+
+function placementNote(incident: Incident): string {
+  switch (incident.geo_precision) {
+    case "city":
+      return "Located from the city named in the headline";
+    case "region":
+    case "country":
+      return `Approximate: ${incident.geo_precision} named in the headline`;
+    default:
+      return "Coordinates reported by the feed";
+  }
+}
+
 function radiusFor(riskScore: number): number {
   const risk = Math.max(0, Math.min(100, riskScore));
   return 2 + (risk / 100) * 3.5;
@@ -97,6 +113,7 @@ function radiusFor(riskScore: number): number {
 export function CrisisMap({ incidents }: { incidents: Incident[] }) {
   const mappable = incidents.filter(hasRealCoordinates);
   const unmapped = incidents.length - mappable.length;
+  const approximate = mappable.filter((incident) => APPROXIMATE.has(incident.geo_precision ?? "")).length;
 
   // Draw the most severe last so they sit on top of the crowd.
   const ordered = [...mappable].sort((a, b) => a.risk_score - b.risk_score);
@@ -108,7 +125,7 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
   // previously rendered this as "647 incidentsnot shown".
   const unmappedNote =
     `${unmapped.toLocaleString()} ${unmapped === 1 ? "incident" : "incidents"} not shown — ` +
-    `the news feed supplies no coordinates for them.`;
+    `neither the feed nor the headline gives a place for them.`;
 
   return (
     <section className="rounded-lg border border-line bg-panel p-4 shadow-soft">
@@ -124,7 +141,7 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
           viewBox={`0 0 ${MAP_W} ${MAP_H}`}
           className="block h-auto w-full"
           role="img"
-          aria-label={`World map showing ${mappable.length} incidents positioned by reported latitude and longitude.`}
+          aria-label={`World map showing ${mappable.length} incidents, ${approximate} of them at an approximate position.`}
         >
           {graticuleLon.map((lon) => {
             const { x } = project(0, lon);
@@ -154,19 +171,20 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
           {ordered.map((incident) => {
             const { x, y } = project(incident.latitude, incident.longitude);
             const fill = SEVERITY_FILL[incident.severity] ?? SEVERITY_FILL.medium;
+            const hollow = APPROXIMATE.has(incident.geo_precision ?? "");
             return (
               <circle
                 key={incident.id}
                 cx={x}
                 cy={y}
                 r={radiusFor(incident.risk_score)}
-                fill={fill}
+                fill={hollow ? "none" : fill}
                 fillOpacity={0.68}
-                stroke="#ffffff"
-                strokeWidth={0.6}
+                stroke={hollow ? fill : "#ffffff"}
+                strokeWidth={hollow ? 1.2 : 0.6}
               >
                 <title>
-                  {`${incident.severity.toUpperCase()} · ${incident.category} · risk ${incident.risk_score}\n${incident.location}\n${incident.latitude.toFixed(2)}, ${incident.longitude.toFixed(2)}`}
+                  {`${incident.severity.toUpperCase()} · ${incident.category} · risk ${incident.risk_score}\n${incident.location}\n${placementNote(incident)}`}
                 </title>
               </circle>
             );
@@ -185,6 +203,12 @@ export function CrisisMap({ incidents }: { incidents: Incident[] }) {
             {severity}
           </span>
         ))}
+        {approximate > 0 && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full border-[1.5px] border-slate-500" aria-hidden="true" />
+            approximate (region or country from the headline)
+          </span>
+        )}
         <span className="ml-auto">Marker size scales with risk score</span>
       </div>
 

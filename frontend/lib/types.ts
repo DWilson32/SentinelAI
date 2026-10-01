@@ -16,6 +16,8 @@ export type Incident = {
   last_activity_at?: string | null;
   active?: boolean;
   source_count?: number;
+  // "reported" by the feed, or read from the headline at "city", "region" or "country" level.
+  geo_precision?: string | null;
 };
 
 export type Source = {

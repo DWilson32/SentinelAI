@@ -47,9 +47,14 @@ def create_db_tables() -> None:
 
 def migrate_db_tables() -> None:
     if not is_postgres():
+        with engine.begin() as connection:
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info(incidents)"))}
+            if columns and "geo_precision" not in columns:
+                connection.execute(text("ALTER TABLE incidents ADD COLUMN geo_precision VARCHAR(16)"))
         return
 
     with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE incidents ADD COLUMN IF NOT EXISTS geo_precision VARCHAR(16)"))
         connection.execute(text("ALTER TABLE sources ALTER COLUMN url TYPE TEXT"))
         connection.execute(text("ALTER TABLE sources ALTER COLUMN raw_text TYPE TEXT"))
         # HNSW rather than IVFFlat: it needs no training pass over existing rows,

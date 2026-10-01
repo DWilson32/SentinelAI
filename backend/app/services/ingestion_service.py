@@ -17,6 +17,7 @@ from app.schemas.ingestion import ExternalIngestRequest, IngestRequest, IngestRe
 from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 from app.services.embedding_service import embedding_service
 from app.services.entity_resolution import Pending, Report, entity_resolver, mostly_latin
+from app.services import geocoder
 from app.services.feed_status_service import (
     FEEDS,
     GDELT_COOLDOWN,
@@ -42,6 +43,9 @@ class _Prepared:
     published_at: datetime
     category: str
     location: str
+    latitude: float | None
+    longitude: float | None
+    geo_precision: str | None
     summary: str
     credibility: float
     prediction: RiskPrediction
@@ -206,6 +210,15 @@ class IngestionService:
     def _prepare(self, provider: str, source: IngestSource) -> "_Prepared":
         published_at = as_utc(source.published_at) if source.published_at else datetime.now(timezone.utc)
         category = source.category or self._infer_category(source.title, source.raw_text)
+        location = source.location or self._infer_location(source.raw_text)
+        latitude, longitude, precision = source.latitude, source.longitude, None
+        if latitude is not None and longitude is not None:
+            precision = "reported"
+        else:
+            # News arrives as "Global"; the place is usually in the headline.
+            place = geocoder.locate(source.title)
+            if place is not None:
+                location, latitude, longitude, precision = place.label, place.latitude, place.longitude, place.precision
         credibility = self._publisher_credibility(provider)
         prediction = risk_model.predict(
             RiskPredictionRequest(
@@ -221,7 +234,10 @@ class IngestionService:
             url=str(source.url),
             published_at=published_at,
             category=category,
-            location=source.location or self._infer_location(source.raw_text),
+            location=location,
+            latitude=latitude,
+            longitude=longitude,
+            geo_precision=precision,
             summary=self._summarize(source.raw_text),
             credibility=credibility,
             prediction=prediction,
@@ -230,8 +246,8 @@ class IngestionService:
                 title=source.title,
                 category=category,
                 published_at=published_at,
-                latitude=source.latitude,
-                longitude=source.longitude,
+                latitude=latitude,
+                longitude=longitude,
             ),
         )
 
@@ -283,8 +299,9 @@ class IngestionService:
             title=item.source.title,
             category=item.category,
             location=item.location,
-            latitude=item.source.latitude or 0.0,
-            longitude=item.source.longitude or 0.0,
+            latitude=item.latitude or 0.0,
+            longitude=item.longitude or 0.0,
+            geo_precision=item.geo_precision,
             summary=item.summary,
             created_at=now,
             updated_at=now,
@@ -314,6 +331,11 @@ class IngestionService:
         # An incident is as severe as its most severe report.
         if item.prediction.risk_score > incident.risk_score:
             self._apply_prediction(incident, item.prediction)
+        # A later report may name the place the first one did not.
+        if incident.geo_precision is None and item.geo_precision is not None:
+            incident.location = item.location
+            incident.latitude, incident.longitude = item.latitude, item.longitude
+            incident.geo_precision = item.geo_precision
 
     def _apply_prediction(self, incident: IncidentModel, prediction: RiskPrediction) -> None:
         incident.risk_score = prediction.risk_score

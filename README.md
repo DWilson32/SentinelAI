@@ -156,7 +156,21 @@ One event is one incident. A report about something already tracked becomes anot
 
 The thresholds were set against the live data; the module docstring records the cases. Incidents ingested before this existed can be merged with `python scripts/merge_duplicates.py` (a dry run; add `--apply --backup FILE` to merge). Merged ids stay valid as aliases of the incident they joined.
 
-The rules are covered by tests:
+### Geocoding
+
+News feeds file stories under "Global". When a report has no coordinates, `backend/app/services/geocoder.py` reads the place from its headline. The rules favour precision, so an incident is left unlocated rather than put in the wrong place:
+
+- The most specific place named wins: city, then region or sea, then country. A place after "in", "near" and similar words wins a tie.
+- Demonyms ("Russian shelling") and the US, which is a party to most international stories, never count as the location on their own.
+- Names that double as common words or first names (Nice, Victoria) are ignored.
+
+The map draws region- and country-level positions as hollow rings, because they are approximate.
+
+Place names come from [GeoNames](https://www.geonames.org/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The index covers countries, first-level regions, and cities that are capitals, regional seats or have 100,000+ people. `scripts/build_gazetteer.py` compiles it into `app/data/gazetteer.json.gz`. To locate incidents stored before geocoding existed, run `python scripts/geocode_incidents.py` (a dry run; add `--apply --backup FILE` to save).
+
+### Tests
+
+The entity resolution and geocoding rules are covered by tests:
 
 ```bash
 pip install -r requirements-dev.txt
