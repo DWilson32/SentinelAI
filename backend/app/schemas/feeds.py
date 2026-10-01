@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-FeedState = Literal["healthy", "degraded", "failing", "unknown"]
+FeedState = Literal["healthy", "degraded", "failing", "disabled", "unknown"]
 OverallState = Literal["healthy", "degraded", "stalled", "unknown"]
 
 

@@ -9,6 +9,8 @@ const DOT: Record<string, string> = {
   degraded: "bg-amber-500",
   failing: "bg-red-500",
   stalled: "bg-red-500",
+  // Hollow, so a deliberately switched-off feed reads differently from an unknown one.
+  disabled: "bg-transparent ring-1 ring-slate-400",
   unknown: "bg-slate-400",
 };
 
@@ -72,7 +74,9 @@ export function FeedStatusPill({ status }: { status: FeedsOverview | null }) {
               <p className="mt-0.5 pl-4 text-xs text-muted">
                 {feed.state === "unknown"
                   ? "Not fetched yet"
-                  : `Last success ${ago(feed.last_success_at, now)} · ${feed.last_item_count} items last run`}
+                  : feed.state === "disabled"
+                    ? "Switched off — not counted in the health total"
+                    : `Last success ${ago(feed.last_success_at, now)} · ${feed.last_item_count} items last run`}
               </p>
               {(feed.last_error || feed.note) && (
                 <p className="mt-0.5 line-clamp-2 pl-4 text-xs text-muted" title={feed.last_error ?? feed.note ?? ""}>

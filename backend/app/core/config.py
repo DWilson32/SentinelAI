@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./sentinel.db"
     gnews_api_key: str | None = None
     news_api_key: str | None = None
+    # ReliefWeb only serves pre-approved app names; request one at
+    # https://apidoc.reliefweb.int/parameters#appname. Unset means the feed is
+    # skipped and shown as disabled, rather than failing with 403 on every sync.
+    reliefweb_appname: str | None = None
 
     # Shared secret guarding ingestion and reindex endpoints. Unset means those
     # endpoints are disabled rather than public.

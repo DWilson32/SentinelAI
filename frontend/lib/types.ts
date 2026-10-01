@@ -101,7 +101,7 @@ export type ReportCreateResponse = {
   generated_from_agent_runs: boolean;
 };
 
-export type FeedState = "healthy" | "degraded" | "failing" | "unknown";
+export type FeedState = "healthy" | "degraded" | "failing" | "disabled" | "unknown";
 
 export type FeedsOverview = {
   overall: "healthy" | "degraded" | "stalled" | "unknown";

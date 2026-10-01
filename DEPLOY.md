@@ -70,7 +70,17 @@ The build command must include `python scripts/prefetch_model.py`. Without it th
 embedding model downloads at runtime, and on the free tier that repeats after
 every spin-down — adding ~40 s to the first chat request each time.
 
-## 5. Health checks and monitoring
+## 5. Public feeds
+
+| Feed | Needs |
+|------|-------|
+| USGS, GDACS, Google News | Nothing |
+| GDELT | Nothing, but it rate-limits cloud IPs intermittently. After a failure the ingester skips it for 6 hours and uses Google News, saving ~12 s per sync; then it probes GDELT again. |
+| ReliefWeb | An approved app name: request one at https://apidoc.reliefweb.int/parameters#appname, then set `RELIEFWEB_APPNAME` on the Render service. Until then it shows as **disabled**, not failing. |
+
+`GET /api/feeds/status` reports the state of each.
+
+## 6. Health checks and monitoring
 
 | Endpoint | Purpose | Behaviour when the database is gone |
 |----------|---------|--------------------------------------|

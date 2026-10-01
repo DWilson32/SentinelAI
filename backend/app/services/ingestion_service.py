@@ -14,7 +14,15 @@ from app.db.models import IncidentModel, SourceModel, TimelineEventModel
 from app.ml.risk_model import risk_model
 from app.schemas.ingestion import ExternalIngestRequest, IngestRequest, IngestResponse, IngestSource, IngestedIncident
 from app.schemas.risk import RiskPredictionRequest
-from app.services.feed_status_service import FeedOutcome, feed_status_service, short_error
+from app.services.feed_status_service import (
+    FEEDS,
+    GDELT_COOLDOWN,
+    GDELT_FEED,
+    FeedOutcome,
+    disabled_reason,
+    feed_status_service,
+    short_error,
+)
 from app.services.rag_index_service import rag_index_service
 
 logger = logging.getLogger(__name__)
@@ -62,31 +70,41 @@ class IngestionService:
         return self._persist_sources(db, request.provider, sources)
 
     async def ingest_public_feeds(self, db: Session, max_results: int = 18) -> IngestResponse:
+        skip_gdelt = feed_status_service.circuit_open(db, GDELT_FEED, GDELT_COOLDOWN)
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            outcomes = await self._fetch_public_sources(client, max_results)
+            outcomes = await self._fetch_public_sources(client, max_results, skip_gdelt=skip_gdelt)
         feed_status_service.record(db, outcomes)
-        sources = [item for outcome in outcomes for item in outcome.items]
+        # Only listed feeds contribute items. The GDELT tracking outcome carries the
+        # same items as conflict_news when it succeeds, and must not double them.
+        sources = [item for outcome in outcomes if outcome.feed in FEEDS for item in outcome.items]
         return self._persist_sources(db, "public", sources[:max_results])
 
-    async def _fetch_public_sources(self, client: httpx.AsyncClient, max_results: int) -> list[FeedOutcome]:
+    async def _fetch_public_sources(
+        self, client: httpx.AsyncClient, max_results: int, *, skip_gdelt: bool = False
+    ) -> list[FeedOutcome]:
         # Each feed fails independently so one outage cannot sink an ingest. The
         # outcome is returned rather than only logged, so a dead feed is visible.
-        fetchers = [
-            ("usgs", lambda: self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 3))),
-            ("gdacs", lambda: self._fetch_gdacs_events(client, max_results=max(3, max_results // 4))),
-            ("conflict_news", lambda: self._fetch_conflict_news(client, max_results=max(4, max_results // 3))),
-            ("reliefweb", lambda: self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6))),
-        ]
-        outcomes: list[FeedOutcome] = []
-        for feed, fetch in fetchers:
+        async def run(feed: str, fetch) -> FeedOutcome:
             try:
-                result = await fetch()
-                # The conflict feed also reports whether it needed its fallback.
-                items, note = result if isinstance(result, tuple) else (result, None)
-                outcomes.append(FeedOutcome(feed=feed, items=items, note=note))
+                return FeedOutcome(feed=feed, items=await fetch())
             except Exception as exc:
                 logger.warning("Public feed %s failed: %s", feed, exc)
-                outcomes.append(FeedOutcome(feed=feed, error=short_error(exc)))
+                return FeedOutcome(feed=feed, error=short_error(exc))
+
+        outcomes = [
+            await run("usgs", lambda: self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 3))),
+            await run("gdacs", lambda: self._fetch_gdacs_events(client, max_results=max(3, max_results // 4))),
+        ]
+
+        # Also yields GDELT's own outcome, which the circuit breaker reads.
+        outcomes += await self._fetch_conflict_news(client, max_results=max(4, max_results // 3), skip_gdelt=skip_gdelt)
+
+        # Skipped entirely when unconfigured: the dashboard shows it as disabled
+        # with instructions, instead of a request that is certain to 403.
+        if not disabled_reason("reliefweb"):
+            outcomes.append(
+                await run("reliefweb", lambda: self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6)))
+            )
         return outcomes
 
     def _persist_sources(self, db: Session, provider: str, sources: list[IngestSource]) -> IngestResponse:
@@ -294,7 +312,7 @@ class IngestionService:
         }
         response = await client.post(
             "https://api.reliefweb.int/v2/reports",
-            params={"appname": "sentinel-ai-local"},
+            params={"appname": settings.reliefweb_appname},
             headers={"User-Agent": "SentinelAI local development"},
             json=payload,
         )
@@ -360,16 +378,35 @@ class IngestionService:
         return sources
 
     async def _fetch_conflict_news(
-        self, client: httpx.AsyncClient, max_results: int
-    ) -> tuple[list[IngestSource], str | None]:
-        """GDELT first, Google News RSS if it fails. Returns (items, note), where
-        the note records that the fallback served — working, but degraded."""
+        self, client: httpx.AsyncClient, max_results: int, *, skip_gdelt: bool = False
+    ) -> list[FeedOutcome]:
+        """GDELT first, Google News RSS if it fails or its circuit is open.
+
+        Returns the conflict_news outcome, followed by GDELT's own outcome when
+        GDELT was actually tried. A skipped run reports nothing for GDELT, so its
+        failure timestamp — and therefore the cooldown — is left untouched.
+        """
+        gdelt: FeedOutcome | None = None
+        if not skip_gdelt:
+            try:
+                items = await self._fetch_gdelt_conflict_news(client, max_results)
+                return [FeedOutcome(feed="conflict_news", items=items), FeedOutcome(feed=GDELT_FEED, items=items)]
+            except Exception as exc:
+                logger.warning("GDELT conflict feed failed; falling back to Google News RSS: %s", exc)
+                gdelt = FeedOutcome(feed=GDELT_FEED, error=short_error(exc))
+
+        if gdelt is None:
+            note = "Served by the Google News fallback; GDELT skipped while its circuit breaker cools down"
+        else:
+            note = f"Served by the Google News fallback; GDELT failed ({gdelt.error})"
         try:
-            return await self._fetch_gdelt_conflict_news(client, max_results), None
-        except (httpx.HTTPError, ValueError) as exc:
-            logger.warning("GDELT conflict feed failed; falling back to Google News RSS: %s", exc)
             items = await self._fetch_google_conflict_news(client, max_results)
-            return items, f"Served by the Google News fallback; GDELT failed ({short_error(exc)})"
+            conflict = FeedOutcome(feed="conflict_news", items=items, note=note)
+        except Exception as exc:
+            logger.warning("Public feed conflict_news failed: %s", exc)
+            conflict = FeedOutcome(feed="conflict_news", error=short_error(exc))
+        # GDELT's failure is kept even when the fallback fails too, so the breaker still opens.
+        return [conflict] if gdelt is None else [conflict, gdelt]
 
     async def _fetch_gdelt_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
         response = await client.get(
