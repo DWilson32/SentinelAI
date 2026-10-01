@@ -5,10 +5,15 @@ import { DashboardCharts } from "@/components/DashboardCharts";
 import { IncidentList } from "@/components/IncidentList";
 import { MetricCard } from "@/components/MetricCard";
 import { RealDataSync } from "@/components/RealDataSync";
-import { getAnalytics, getIncidents } from "@/lib/api";
+import { FeedStatusPill } from "@/components/FeedStatusPill";
+import { getAnalytics, getFeedStatus, getIncidents } from "@/lib/api";
 
 export default async function Home() {
-  const [incidents, analytics] = await Promise.all([getIncidents(), getAnalytics()]);
+  const [incidents, analytics, feedStatus] = await Promise.all([
+    getIncidents(),
+    getAnalytics(),
+    getFeedStatus(),
+  ]);
 
   return (
     <main className="min-h-screen">
@@ -19,10 +24,7 @@ export default async function Home() {
             <h1 className="mt-1 text-2xl font-bold text-ink md:text-3xl">Autonomous Crisis Intelligence</h1>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm text-muted">
-              <RadioTower size={16} aria-hidden="true" />
-              Disaster and conflict feeds ready
-            </div>
+            <FeedStatusPill status={feedStatus} />
             <RealDataSync />
           </div>
         </div>

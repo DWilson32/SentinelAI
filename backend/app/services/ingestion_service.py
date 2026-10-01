@@ -14,6 +14,7 @@ from app.db.models import IncidentModel, SourceModel, TimelineEventModel
 from app.ml.risk_model import risk_model
 from app.schemas.ingestion import ExternalIngestRequest, IngestRequest, IngestResponse, IngestSource, IngestedIncident
 from app.schemas.risk import RiskPredictionRequest
+from app.services.feed_status_service import FeedOutcome, feed_status_service, short_error
 from app.services.rag_index_service import rag_index_service
 
 logger = logging.getLogger(__name__)
@@ -61,28 +62,32 @@ class IngestionService:
         return self._persist_sources(db, request.provider, sources)
 
     async def ingest_public_feeds(self, db: Session, max_results: int = 18) -> IngestResponse:
-        sources: list[IngestSource] = []
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-            source_groups = await self._fetch_public_sources(client, max_results)
-        for group in source_groups:
-            sources.extend(group)
+            outcomes = await self._fetch_public_sources(client, max_results)
+        feed_status_service.record(db, outcomes)
+        sources = [item for outcome in outcomes for item in outcome.items]
         return self._persist_sources(db, "public", sources[:max_results])
 
-    async def _fetch_public_sources(self, client: httpx.AsyncClient, max_results: int) -> list[list[IngestSource]]:
-        tasks = [
-            self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 3)),
-            self._fetch_gdacs_events(client, max_results=max(3, max_results // 4)),
-            self._fetch_conflict_news(client, max_results=max(4, max_results // 3)),
-            self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6)),
+    async def _fetch_public_sources(self, client: httpx.AsyncClient, max_results: int) -> list[FeedOutcome]:
+        # Each feed fails independently so one outage cannot sink an ingest. The
+        # outcome is returned rather than only logged, so a dead feed is visible.
+        fetchers = [
+            ("usgs", lambda: self._fetch_usgs_earthquakes(client, max_results=max(3, max_results // 3))),
+            ("gdacs", lambda: self._fetch_gdacs_events(client, max_results=max(3, max_results // 4))),
+            ("conflict_news", lambda: self._fetch_conflict_news(client, max_results=max(4, max_results // 3))),
+            ("reliefweb", lambda: self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6))),
         ]
-        results: list[list[IngestSource]] = []
-        for task in tasks:
+        outcomes: list[FeedOutcome] = []
+        for feed, fetch in fetchers:
             try:
-                results.append(await task)
+                result = await fetch()
+                # The conflict feed also reports whether it needed its fallback.
+                items, note = result if isinstance(result, tuple) else (result, None)
+                outcomes.append(FeedOutcome(feed=feed, items=items, note=note))
             except Exception as exc:
-                logger.warning("Public feed ingestion source failed: %s", exc)
-                results.append([])
-        return results
+                logger.warning("Public feed %s failed: %s", feed, exc)
+                outcomes.append(FeedOutcome(feed=feed, error=short_error(exc)))
+        return outcomes
 
     def _persist_sources(self, db: Session, provider: str, sources: list[IngestSource]) -> IngestResponse:
         incidents: list[IngestedIncident] = []
@@ -354,12 +359,17 @@ class IngestionService:
             )
         return sources
 
-    async def _fetch_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
+    async def _fetch_conflict_news(
+        self, client: httpx.AsyncClient, max_results: int
+    ) -> tuple[list[IngestSource], str | None]:
+        """GDELT first, Google News RSS if it fails. Returns (items, note), where
+        the note records that the fallback served — working, but degraded."""
         try:
-            return await self._fetch_gdelt_conflict_news(client, max_results)
+            return await self._fetch_gdelt_conflict_news(client, max_results), None
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("GDELT conflict feed failed; falling back to Google News RSS: %s", exc)
-            return await self._fetch_google_conflict_news(client, max_results)
+            items = await self._fetch_google_conflict_news(client, max_results)
+            return items, f"Served by the Google News fallback; GDELT failed ({short_error(exc)})"
 
     async def _fetch_gdelt_conflict_news(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
         response = await client.get(

@@ -1,4 +1,4 @@
-import type { AgentRun, AnalyticsOverview, ChatResponse, Incident, IncidentDetail, IngestResponse, Report, ReportCreateResponse } from "@/lib/types";
+import type { AgentRun, AnalyticsOverview, ChatResponse, FeedsOverview, Incident, IncidentDetail, IngestResponse, Report, ReportCreateResponse } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api";
 
@@ -29,6 +29,17 @@ export function getIncident(incidentId: string) {
 
 export function getAnalytics() {
   return request<AnalyticsOverview>("/analytics/overview");
+}
+
+// Fails soft. Vercel can go live before Render during a deploy, so for a minute
+// the frontend may call this before the backend has it — a missing status pill
+// must not take the whole dashboard down with it.
+export async function getFeedStatus(): Promise<FeedsOverview | null> {
+  try {
+    return await request<FeedsOverview>("/feeds/status");
+  } catch {
+    return null;
+  }
 }
 
 export function askSentinel(query: string) {

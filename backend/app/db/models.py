@@ -128,3 +128,23 @@ class SourceChunkModel(Base):
     embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(settings.embedding_dimensions), nullable=False)
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class FeedStatusModel(Base):
+    """Outcome of the most recent fetch from each public feed.
+
+    Each feed is fetched inside its own try/except so one failure cannot sink an
+    ingest — which also meant failures were only ever logged, and a feed could be
+    dead for months unnoticed. Recording the outcome makes it visible.
+    """
+
+    __tablename__ = "feed_status"
+
+    feed: Mapped[str] = mapped_column(String(32), primary_key=True)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set when the feed succeeded only through a fallback, e.g. GDELT -> Google News.
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

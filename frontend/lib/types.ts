@@ -97,3 +97,23 @@ export type ReportCreateResponse = {
   report: Report;
   generated_from_agent_runs: boolean;
 };
+
+export type FeedState = "healthy" | "degraded" | "failing" | "unknown";
+
+export type FeedsOverview = {
+  overall: "healthy" | "degraded" | "stalled" | "unknown";
+  healthy: number;
+  total: number;
+  last_sync_at: string | null;
+  feeds: {
+    feed: string;
+    label: string;
+    state: FeedState;
+    last_attempt_at: string | null;
+    last_success_at: string | null;
+    last_error: string | null;
+    note: string | null;
+    last_item_count: number;
+    consecutive_failures: number;
+  }[];
+};

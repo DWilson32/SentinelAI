@@ -8,12 +8,14 @@ from app.db.database import get_db
 from app.schemas.agent import AgentRun
 from app.schemas.analytics import AnalyticsOverview
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.feeds import FeedsOverview
 from app.schemas.ingestion import ExternalIngestRequest, IngestRequest, IngestResponse
 from app.schemas.incident import Incident, IncidentDetail
 from app.schemas.report import Report, ReportCreateResponse
 from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 from app.services.agent_service import agent_service
 from app.services.analytics_service import analytics_service
+from app.services.feed_status_service import feed_status_service
 from app.services.ingestion_service import ingestion_service
 from app.services.incident_service import incident_service
 from app.services.rag_index_service import rag_index_service
@@ -145,3 +147,9 @@ def generate_report(incident_id: str, db: Session = Depends(get_db)) -> ReportCr
 @router.get("/analytics/overview", response_model=AnalyticsOverview)
 def analytics_overview(db: Session = Depends(get_db)) -> AnalyticsOverview:
     return analytics_service.get_overview(db)
+
+
+@router.get("/feeds/status", response_model=FeedsOverview)
+def feeds_status(db: Session = Depends(get_db)) -> FeedsOverview:
+    """Health of each public feed, from the most recent ingest attempt."""
+    return feed_status_service.overview(db)
