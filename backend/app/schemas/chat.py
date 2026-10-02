@@ -23,4 +23,6 @@ class ChatResponse(BaseModel):
     # Which path produced the answer, so the UI can say so instead of
     # always claiming semantic search.
     retrieval: Literal["semantic", "keyword"] = "keyword"
+    # The language model that wrote the answer, or "template" when none did.
+    answered_by: str = "template"
 

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import Session
 
+from app.agents.llm import chat_completion, model_name
 from app.core.config import settings
 from app.db.models import IncidentModel
 from app.schemas.chat import ChatRequest, ChatResponse, Citation
@@ -61,7 +62,7 @@ class RagService:
         incident_ids = list(dict.fromkeys(chunk.incident_id for chunk in chunks))
         confidence = min(0.95, max(chunk.score for chunk in chunks))
         top_incident = incident_service.get_incident(db, chunks[0].incident_id) if chunks else None
-        answer = self._generate_answer(request.query, chunks, top_incident, retrieval)
+        answer, answered_by = self._generate_answer(request.query, chunks, top_incident, retrieval)
 
         return ChatResponse(
             answer=answer,
@@ -69,6 +70,7 @@ class RagService:
             citations=citations,
             retrieved_incident_ids=incident_ids,
             retrieval=retrieval,
+            answered_by=answered_by,
         )
 
     def _retrieve_vector_chunks(self, db: Session, request: ChatRequest) -> list[RetrievedChunk] | None:
@@ -225,48 +227,26 @@ class RagService:
         suffix = "..." if end < len(compact) else ""
         return f"{prefix}{compact[start:end]}{suffix}"
 
-    def _generate_answer(self, query: str, chunks: list[RetrievedChunk], top_incident, retrieval: str) -> str:
-        if settings.openai_api_key:
-            try:
-                return self._generate_openai_answer(query, chunks)
-            except Exception as exc:
-                logger.warning("OpenAI RAG answer generation failed; using deterministic fallback: %s", exc)
-        return self._compose_answer(query, chunks, top_incident, retrieval)
-
-    def _generate_openai_answer(self, query: str, chunks: list[RetrievedChunk]) -> str:
-        from openai import OpenAI
-
-        context_blocks = []
-        for index, chunk in enumerate(chunks, start=1):
-            context_blocks.append(
-                f"[{index}] Incident: {chunk.incident_title} ({chunk.severity}, risk {chunk.risk_score:.0f})\n"
-                f"Location: {chunk.location}\n"
-                f"Source: {chunk.title} - {chunk.publisher}\n"
-                f"Excerpt: {chunk.snippet}"
-            )
-        context = "\n\n".join(context_blocks)
-        client = OpenAI(api_key=settings.openai_api_key)
-        response = client.chat.completions.create(
-            model=settings.openai_chat_model,
-            temperature=0.2,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are SentinelAI, a crisis intelligence analyst. "
-                        "Answer only using the provided source excerpts. "
-                        "If the context is insufficient, say what is missing. "
-                        "Be concise and actionable."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Sources:\n{context}\n\nQuestion: {query}",
-                },
-            ],
+    def _generate_answer(self, query: str, chunks: list[RetrievedChunk], top_incident, retrieval: str) -> tuple[str, str]:
+        """The answer, and what wrote it: the model's name, or "template" when
+        no model answer is available (no key, budget spent, an error)."""
+        context = "\n\n".join(
+            f"[{index}] Incident: {chunk.incident_title} ({chunk.severity}, risk {chunk.risk_score:.0f})\n"
+            f"Location: {chunk.location}\n"
+            f"Source: {chunk.title} - {chunk.publisher}\n"
+            f"Excerpt: {chunk.snippet}"
+            for index, chunk in enumerate(chunks, start=1)
         )
-        content = response.choices[0].message.content
-        return content.strip() if content else self._compose_answer(query, chunks, None, "semantic")
+        written = chat_completion(
+            "You are SentinelAI, a crisis intelligence analyst. "
+            "Answer only using the provided source excerpts, citing them as [1], [2]. "
+            "If the context is insufficient, say what is missing. "
+            "Be concise and actionable.",
+            f"Sources:\n{context}\n\nQuestion: {query}",
+        )
+        if written:
+            return written, model_name() or "model"
+        return self._compose_answer(query, chunks, top_incident, retrieval), "template"
 
     def _compose_answer(self, query: str, chunks: list[RetrievedChunk], top_incident, retrieval: str) -> str:
         top = chunks[0]

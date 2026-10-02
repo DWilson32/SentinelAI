@@ -234,9 +234,25 @@ curl -X POST http://127.0.0.1:8000/api/agents/investigate/inc-001
 Pipeline: **Research → Verification → Prediction → Strategy → Report**
 
 - Uses the incident's own sources, plus semantically similar *other* incidents as context
-- With `OPENAI_API_KEY`: LLM-generated step outputs and executive brief
-- Without key: rule-based fallbacks grounded in incident data
-- Persists agent runs and an executive report per investigation
+- With a language model configured, each step is written by the model; otherwise by a template grounded in the incident's data. Each step says which.
+- Keeps every investigation (the latest 20 per incident), each with the model calls and tokens it used
+
+### The language model, on a free plan
+
+The agents and chat answers use **`openai/gpt-oss-120b`**, an open-weight model (Apache 2.0), served by **Groq's free plan**. The plan needs no credit card and allows 1,000 requests and 200,000 tokens a day. Set one variable:
+
+```
+LLM_API_KEY=<key from console.groq.com>
+```
+
+It can never cost money:
+- **Budget.** The app counts its own tokens per day and stops at `LLM_DAILY_TOKEN_BUDGET` (150,000), below the free limit. After that, the agents use their templates until the next day.
+- **Cache.** A prompt seen before is answered from storage, so re-running an unchanged investigation spends nothing.
+- **Fallback.** Any failure, such as a rate limit, also falls back to the template instead of an error.
+
+An investigation is five model calls, a few thousand tokens.
+
+The gateway (`backend/app/agents/llm.py`) speaks the OpenAI-compatible API. Any other endpoint works by setting `LLM_BASE_URL` and `LLM_MODEL`, including a self-hosted open model on Ollama, llama.cpp or vLLM, with no code change.
 
 ## Risk scoring (trained)
 

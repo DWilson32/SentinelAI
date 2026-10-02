@@ -3,7 +3,7 @@ from typing import Annotated, Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agents.llm import chat_completion
+from app.agents.llm import chat_completion, model_name
 from app.schemas.incident import IncidentDetail
 from app.services.credibility import verification_summary
 
@@ -32,6 +32,11 @@ def _sources_block(incident: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _author(llm_text: str | None) -> str:
+    """Who wrote a step's finding: the model, or the template it falls back to."""
+    return (model_name() or "model") if llm_text else "template"
+
+
 def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
     source_count = len(incident.get("sources") or [])
@@ -54,6 +59,7 @@ def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
         ),
         "source_count": source_count,
         "publishers": list({s.get("publisher") for s in incident.get("sources") or [] if s.get("publisher")}),
+        "written_by": _author(llm_text),
     }
     return {"steps": [{"agent_name": "Research Agent", "output": output}]}
 
@@ -72,6 +78,7 @@ def _verification_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     )
     if llm_text:
         output["finding"] = llm_text
+    output["written_by"] = _author(llm_text)
     return {"steps": [{"agent_name": "Verification Agent", "output": output}]}
 
 
@@ -98,6 +105,7 @@ def _prediction_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
         "severity": incident.get("severity"),
         "confidence": risk.get("confidence", 0.0),
         "drivers": risk.get("drivers") or [],
+        "written_by": _author(llm_text),
     }
     return {"steps": [{"agent_name": "Prediction Agent", "output": output}]}
 
@@ -121,7 +129,11 @@ def _strategy_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
         recommended = parsed[:5] if parsed else actions
     else:
         recommended = actions
-    output = {"finding": llm_text or "Strategy recommendations derived from incident playbook.", "recommended_actions": recommended}
+    output = {
+        "finding": llm_text or "Strategy recommendations derived from incident playbook.",
+        "recommended_actions": recommended,
+        "written_by": _author(llm_text),
+    }
     return {"steps": [{"agent_name": "Strategy Agent", "output": output}]}
 
 
@@ -146,7 +158,12 @@ def _report_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
         f"(risk {incident.get('risk_score')}/100). {incident.get('summary')} "
         f"Priority actions: {'; '.join((strategy.get('recommended_actions') or [])[:3])}."
     )
-    output = {"brief": brief, "status": "Executive brief ready.", "report_type": "executive_brief"}
+    output = {
+        "brief": brief,
+        "status": "Executive brief ready.",
+        "report_type": "executive_brief",
+        "written_by": _author(llm_text),
+    }
     return {"steps": [{"agent_name": "Report Agent", "output": output}]}
 
 

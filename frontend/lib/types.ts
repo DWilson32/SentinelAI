@@ -75,6 +75,8 @@ export type ChatResponse = {
   citations: { title: string; publisher: string; url: string }[];
   retrieved_incident_ids: string[];
   retrieval?: "semantic" | "keyword";
+  // The language model that wrote the answer, or "template" when none did.
+  answered_by?: string;
 };
 
 export type IngestResponse = {

@@ -74,6 +74,18 @@ export function ChatPanel() {
                 {response.retrieval}
               </span>
             )}
+            {response.answered_by && (
+              <span
+                className="rounded bg-white px-2 py-1 ring-1 ring-line"
+                title={
+                  response.answered_by === "template"
+                    ? "No language model was available, so the answer was assembled from the top source"
+                    : "Written by this open-weight language model from the cited sources only"
+                }
+              >
+                {response.answered_by === "template" ? "template answer" : `written by ${response.answered_by}`}
+              </span>
+            )}
             {response.citations.length > 0 && (
               <span title="Similarity between your question and the best-matching source, not a probability">
                 Match {(response.confidence * 100).toFixed(0)}%

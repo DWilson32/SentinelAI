@@ -174,3 +174,30 @@ class IncidentAliasModel(Base):
         ForeignKey("incidents.id", ondelete="CASCADE"), index=True, nullable=False
     )
     merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class LlmUsageModel(Base):
+    """Language-model use per day (UTC), counted against the daily token budget."""
+
+    __tablename__ = "llm_usage"
+
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Calls not made because the budget was spent, or that failed.
+    skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class LlmCacheModel(Base):
+    """Answers to prompts already sent, so repeating one costs no quota."""
+
+    __tablename__ = "llm_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    response: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

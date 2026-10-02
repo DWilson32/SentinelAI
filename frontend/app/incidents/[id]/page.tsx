@@ -17,15 +17,30 @@ function byInvestigation(runs: AgentRun[]): [number, AgentRun[]][] {
   return [...groups.entries()].sort((a, b) => b[0] - a[0]);
 }
 
+// What an investigation cost: free-plan model calls and tokens, or none.
+function usageNote(run: AgentRun): string {
+  const llm = run.input?.llm as { model?: string | null; calls?: number; cached?: number; tokens?: number } | undefined;
+  if (!llm || !llm.model) return "templates only";
+  const reused = llm.cached ? `, ${llm.cached} from cache` : "";
+  return `${llm.model} · ${llm.calls ?? 0} calls${reused} · ${(llm.tokens ?? 0).toLocaleString()} tokens`;
+}
+
 function InvestigationRuns({ number, runs }: { number: number; runs: AgentRun[] }) {
   return (
     <div className="space-y-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {`Investigation ${number} · ${runs[0].created_at.slice(0, 16).replace("T", " ")} UTC`}
+        {`Investigation ${number} · ${runs[0].created_at.slice(0, 16).replace("T", " ")} UTC · ${usageNote(runs[0])}`}
       </p>
       {runs.map((run) => (
         <article key={run.id} className="rounded-md border border-line p-3">
-          <p className="text-sm font-semibold text-ink">{run.agent_name}</p>
+          <p className="text-sm font-semibold text-ink">
+            {run.agent_name}
+            {typeof run.output.written_by === "string" && (
+              <span className="ml-2 text-xs font-normal text-muted">
+                {run.output.written_by === "template" ? "template" : `written by ${run.output.written_by}`}
+              </span>
+            )}
+          </p>
           <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-xs leading-5 text-slate-700">
             {JSON.stringify(run.output, null, 2)}
           </pre>

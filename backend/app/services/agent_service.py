@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models import AgentRunModel, IncidentModel, ReportModel
 from app.schemas.agent import AgentRun
+from app.agents.llm import metered
 from app.services.credibility import verification_summary
 from app.services.embedding_service import embedding_service
 from app.services.incident_service import incident_service
@@ -30,20 +31,28 @@ class AgentService:
             return []
 
         rag_context = self._build_rag_context(db, incident)
-        try:
-            from app.agents.investigation_graph import run_investigation
+        # Counts the model calls and tokens this investigation costs.
+        with metered() as meter:
+            try:
+                from app.agents.investigation_graph import run_investigation
 
-            steps = run_investigation(incident, rag_context)
-        except Exception as exc:
-            logger.exception("LangGraph investigation failed; using fallback workflow: %s", exc)
-            steps = self._fallback_steps(incident)
+                steps = run_investigation(incident, rag_context)
+            except Exception as exc:
+                logger.exception("LangGraph investigation failed; using fallback workflow: %s", exc)
+                steps = self._fallback_steps(incident)
 
         # Steps of one investigation share a timestamp and a number; earlier
         # investigations stay as history. Runs from before numbering count as 1.
         previous = db.scalars(select(AgentRunModel.input).where(AgentRunModel.incident_id == incident_id)).all()
         number = max((run_input.get("investigation", 1) for run_input in previous), default=0) + 1
         created_at = datetime.now(timezone.utc)
-        run_input = {"incident_id": incident_id, "title": incident.title, "workflow": "langgraph", "investigation": number}
+        run_input = {
+            "incident_id": incident_id,
+            "title": incident.title,
+            "workflow": "langgraph",
+            "investigation": number,
+            "llm": meter.as_dict(),
+        }
         models = [
             AgentRunModel(
                 id=f"run-{uuid4()}",

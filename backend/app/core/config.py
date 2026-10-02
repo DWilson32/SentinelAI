@@ -47,6 +47,20 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_chat_model: str = "gpt-4o-mini"
 
+    # The language model behind the agents and chat answers: any OpenAI-compatible
+    # endpoint. The defaults are Groq's free plan, which needs no credit card;
+    # its openai/gpt-oss-120b allows 1,000 requests and 200,000 tokens a day.
+    llm_api_key: str | None = None
+    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_model: str = "openai/gpt-oss-120b"
+    # Kept under the free plan's 200,000 tokens a day, with room to spare, so the
+    # app never needs a paid plan: past it, agents fall back to template text.
+    llm_daily_token_budget: int = 150_000
+    llm_max_output_tokens: int = 700
+    # gpt-oss models reason before answering, and reasoning tokens count against
+    # the budget; "low" keeps that short. Empty to leave it to the provider.
+    llm_reasoning_effort: str | None = "low"
+
     rag_top_k: int = 4
     # Vector search always returns its k nearest neighbours, however unrelated.
     # Chunks below this cosine similarity are discarded so an off-topic question

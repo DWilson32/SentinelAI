@@ -18,7 +18,7 @@
 
 | Key | Value |
 |-----|--------|
-| `OPENAI_API_KEY` | Optional, for LLM chat/agents |
+| `LLM_API_KEY` | Optional. A free Groq key (console.groq.com, no card) turns on model-written agent steps and chat answers. The app stays inside the free plan by itself. |
 
 6. Wait for deploy; copy API URL e.g. `https://sentinel-ai-api.onrender.com`
 7. Verify: `https://sentinel-ai-api.onrender.com/health`
