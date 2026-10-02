@@ -168,6 +168,26 @@ The map draws region- and country-level positions as hollow rings, because they 
 
 Place names come from [GeoNames](https://www.geonames.org/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The index covers countries, first-level regions, and cities that are capitals, regional seats or have 100,000+ people. `scripts/build_gazetteer.py` compiles it into `app/data/gazetteer.json.gz`. To locate incidents stored before geocoding existed, run `python scripts/geocode_incidents.py` (a dry run; add `--apply --backup FILE` to save).
 
+### Evaluation
+
+`backend/eval/` measures the system instead of eyeballing it.
+
+**The labelled set:** 227 incidents, labelled on one scale borrowed from USGS PAGER (deaths of 0 / 1–99 / 100–999 / 1,000+ map to low / medium / high / critical; see `eval/RUBRIC.md`).
+- Disasters take the agencies' own alerts.
+- Historical yellow, orange and red USGS quakes and orange and red GDACS events supply the higher severities, since the live data has only green alerts.
+- News is labelled by reported casualties, and each label was reviewed.
+
+**The golden questions:** 28 chat questions, each listing the incidents a correct answer should cite.
+
+```bash
+python -m eval.build_dataset          # refresh the live part (needs DATABASE_URL)
+python -m eval.run_eval --save NAME   # writes eval/results/NAME.md
+```
+
+Baseline (`eval/results/baseline.md`):
+- The heuristic risk model rates almost everything medium, for **14% severity accuracy** (macro F1 0.06). It ignores the agencies' alerts entirely.
+- Retrieval recall@4 is **0.83 with pgvector semantic search, against 0.66 with the keyword search** that served every query while the old vector store was down.
+
 ### Tests
 
 The entity resolution and geocoding rules are covered by tests:

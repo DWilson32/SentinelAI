@@ -1,0 +1,729 @@
+{
+  "name": "baseline",
+  "model": "sentinel-heuristic-risk-v2",
+  "severity": {
+    "incidents": 227,
+    "accuracy": 0.13656387665198239,
+    "macro_f1": 0.06175298804780877,
+    "by_kind": {
+      "hazard": {
+        "accuracy": 0.11834319526627218,
+        "n": 169
+      },
+      "news": {
+        "accuracy": 0.1896551724137931,
+        "n": 58
+      }
+    },
+    "per_class": {
+      "low": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 111
+      },
+      "medium": {
+        "precision": 0.14418604651162792,
+        "recall": 0.8611111111111112,
+        "f1": 0.2470119521912351,
+        "support": 36
+      },
+      "high": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 40
+      },
+      "critical": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 40
+      }
+    },
+    "confusion": {
+      "low": {
+        "low": 0,
+        "medium": 104,
+        "high": 7,
+        "critical": 0
+      },
+      "medium": {
+        "low": 0,
+        "medium": 31,
+        "high": 5,
+        "critical": 0
+      },
+      "high": {
+        "low": 0,
+        "medium": 40,
+        "high": 0,
+        "critical": 0
+      },
+      "critical": {
+        "low": 0,
+        "medium": 40,
+        "high": 0,
+        "critical": 0
+      }
+    },
+    "predicted_distribution": {
+      "medium": 215,
+      "high": 12
+    }
+  },
+  "retrieval": {
+    "semantic": {
+      "hit_rate": 0.9642857142857143,
+      "recall_at_4": 0.8333333333333333,
+      "by_kind": {
+        "place": 0.9047619047619048,
+        "event": 0.7395833333333334,
+        "theme": 0.7916666666666666
+      },
+      "queries": [
+        {
+          "query": "earthquakes in Japan",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-76d349562261",
+            "inc-cf6bde2cce31",
+            "inc-8795f35dcb39"
+          ]
+        },
+        {
+          "query": "earthquake in the Philippines",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-9c2ee43c3a9b",
+            "inc-e142535c0c97",
+            "inc-467e199f0d00",
+            "inc-bf8c695c78fd"
+          ]
+        },
+        {
+          "query": "Indonesia earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-4e9d2e1e6805",
+            "inc-62e3bc6061ba",
+            "inc-feb17f6c15b5",
+            "inc-c94ef6b89bd4"
+          ]
+        },
+        {
+          "query": "Tonga earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-436ec901aaea",
+            "inc-a3a04116641b",
+            "inc-e5c588d1b6c5"
+          ]
+        },
+        {
+          "query": "Solomon Islands quake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-cc9b4eb9869e",
+            "inc-b3249af12adf",
+            "inc-d200e7b5c5af",
+            "inc-36920218c364"
+          ]
+        },
+        {
+          "query": "New Caledonia earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-9d041bbe9f3a",
+            "inc-dcb7e84a5db1",
+            "inc-faedf367717b",
+            "inc-40ef40bd3f46"
+          ]
+        },
+        {
+          "query": "earthquake in Afghanistan",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-17aec19f8a3f",
+            "inc-ee6cafc32a71",
+            "inc-66776889be10",
+            "inc-647551e0018e"
+          ]
+        },
+        {
+          "query": "Kamchatka earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.6666666666666666,
+          "retrieved": [
+            "inc-8bd144cda710",
+            "inc-0640480abde4",
+            "inc-e5c588d1b6c5",
+            "inc-436ec901aaea"
+          ]
+        },
+        {
+          "query": "Taiwan earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-6675cfeb5119",
+            "inc-ab85aa1ebb98",
+            "inc-04c100ba5cf4",
+            "inc-b64ac5b13405"
+          ]
+        },
+        {
+          "query": "Costa Rica earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-3af98a265781",
+            "inc-36920218c364",
+            "inc-89fc8a00a9ed"
+          ]
+        },
+        {
+          "query": "Alaska earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-28b775767790",
+            "inc-8bd144cda710",
+            "inc-0640480abde4",
+            "inc-a3a04116641b"
+          ]
+        },
+        {
+          "query": "Mid-Atlantic Ridge earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-7cf5cbd37dd1",
+            "inc-0fa7b346e549",
+            "inc-663de0499002"
+          ]
+        },
+        {
+          "query": "Papua New Guinea earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-bf8c695c78fd",
+            "inc-3257f7087bad",
+            "inc-36920218c364",
+            "inc-dcb7e84a5db1"
+          ]
+        },
+        {
+          "query": "Yemen earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-66776889be10",
+            "inc-436ec901aaea",
+            "inc-a3a04116641b"
+          ]
+        },
+        {
+          "query": "flood alerts",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-0c950f031206",
+            "inc-f99ef2096711",
+            "inc-a9648e455e6b",
+            "inc-22c7b3eb0226"
+          ]
+        },
+        {
+          "query": "flooding and displaced people",
+          "kind": "theme",
+          "hit": false,
+          "recall_at_4": 0.0,
+          "retrieved": [
+            "inc-3861feaf4d2b",
+            "inc-56d77974f844",
+            "inc-b24d08afc2b4"
+          ]
+        },
+        {
+          "query": "tropical cyclones",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-321d9abc4c4d",
+            "inc-1412169ee31f",
+            "inc-b4f7f9e21710",
+            "inc-95b2ec18ec7d"
+          ]
+        },
+        {
+          "query": "Myanmar airstrike",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.5,
+          "retrieved": [
+            "inc-db83f857e7ef",
+            "inc-0d947c95c938"
+          ]
+        },
+        {
+          "query": "Israeli strikes in Gaza",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-49182989e1b2",
+            "inc-c3071aff62a5",
+            "inc-cb45ccf4b88d"
+          ]
+        },
+        {
+          "query": "Gaza humanitarian situation",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-3dadf5002237",
+            "inc-eff911b00691",
+            "inc-fd6c70374724"
+          ]
+        },
+        {
+          "query": "Hamas commander killed",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-0750e7840714",
+            "inc-49182989e1b2",
+            "inc-a7c3e82abd6d"
+          ]
+        },
+        {
+          "query": "Sudan ceasefire",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.6666666666666666,
+          "retrieved": [
+            "inc-def41cb65ba2",
+            "inc-8cb74671dbfd"
+          ]
+        },
+        {
+          "query": "Iran US ceasefire talks",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-29aa06b4c378",
+            "inc-9a71f1cfc88b",
+            "inc-fc7c1a2d1f71",
+            "inc-f9ed610470a0"
+          ]
+        },
+        {
+          "query": "attacks on shipping in the Strait of Hormuz",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-d92c3d7b76de",
+            "inc-f9ed610470a0",
+            "inc-34dd74567938"
+          ]
+        },
+        {
+          "query": "oil prices and the Iran war",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-acb2b6b0bd0d",
+            "inc-e31778daf632",
+            "inc-00a3a26676c6",
+            "inc-2dbb7b0222ac"
+          ]
+        },
+        {
+          "query": "Ukraine Russia peace talks",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.6666666666666666,
+          "retrieved": [
+            "inc-ef20991fe532",
+            "inc-25230e97a497",
+            "inc-f2775374519c"
+          ]
+        },
+        {
+          "query": "shelling in Kyiv",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.3333333333333333,
+          "retrieved": [
+            "inc-e525a6ca5fed",
+            "inc-1b91975459fd",
+            "inc-a85a81322291",
+            "inc-f2775374519c"
+          ]
+        },
+        {
+          "query": "Myanmar refugees deported from Malaysia",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-120f1fb394db",
+            "inc-2f5fadd28db4"
+          ]
+        }
+      ]
+    },
+    "keyword": {
+      "hit_rate": 0.8928571428571429,
+      "recall_at_4": 0.6636904761904762,
+      "by_kind": {
+        "place": 0.7797619047619048,
+        "event": 0.53125,
+        "theme": 0.5694444444444444
+      },
+      "queries": [
+        {
+          "query": "earthquakes in Japan",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.5,
+          "retrieved": [
+            "inc-76d349562261",
+            "inc-8795f35dcb39"
+          ]
+        },
+        {
+          "query": "earthquake in the Philippines",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.5,
+          "retrieved": [
+            "inc-9c2ee43c3a9b",
+            "inc-467e199f0d00"
+          ]
+        },
+        {
+          "query": "Indonesia earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-feb17f6c15b5",
+            "inc-8dd8efad4fbe",
+            "inc-62e3bc6061ba"
+          ]
+        },
+        {
+          "query": "Tonga earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.6666666666666666,
+          "retrieved": [
+            "inc-a3a04116641b",
+            "inc-436ec901aaea"
+          ]
+        },
+        {
+          "query": "Solomon Islands quake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-d200e7b5c5af",
+            "inc-36920218c364",
+            "inc-b3249af12adf"
+          ]
+        },
+        {
+          "query": "New Caledonia earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-40ef40bd3f46",
+            "inc-9d041bbe9f3a",
+            "inc-dcb7e84a5db1",
+            "inc-faedf367717b"
+          ]
+        },
+        {
+          "query": "earthquake in Afghanistan",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-17aec19f8a3f",
+            "inc-5c82b306afea",
+            "inc-549480793d8f",
+            "inc-f8e1233934e8"
+          ]
+        },
+        {
+          "query": "Kamchatka earthquake",
+          "kind": "place",
+          "hit": false,
+          "recall_at_4": 0.0,
+          "retrieved": [
+            "inc-5c82b306afea",
+            "inc-549480793d8f",
+            "inc-f8e1233934e8",
+            "inc-18f061dcbd8d"
+          ]
+        },
+        {
+          "query": "Taiwan earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-6675cfeb5119",
+            "inc-5c82b306afea",
+            "inc-549480793d8f",
+            "inc-f8e1233934e8"
+          ]
+        },
+        {
+          "query": "Costa Rica earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-3af98a265781",
+            "inc-5c82b306afea",
+            "inc-549480793d8f"
+          ]
+        },
+        {
+          "query": "Alaska earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-28b775767790",
+            "inc-5c82b306afea",
+            "inc-549480793d8f",
+            "inc-f8e1233934e8"
+          ]
+        },
+        {
+          "query": "Mid-Atlantic Ridge earthquakes",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-7cf5cbd37dd1",
+            "inc-0fa7b346e549",
+            "inc-62af92cc5594"
+          ]
+        },
+        {
+          "query": "Papua New Guinea earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-3257f7087bad",
+            "inc-bf8c695c78fd",
+            "inc-40ef40bd3f46",
+            "inc-9d041bbe9f3a"
+          ]
+        },
+        {
+          "query": "Yemen earthquake",
+          "kind": "place",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-66776889be10",
+            "inc-5c82b306afea",
+            "inc-549480793d8f",
+            "inc-f8e1233934e8"
+          ]
+        },
+        {
+          "query": "flood alerts",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-22c7b3eb0226",
+            "inc-0c950f031206",
+            "inc-a9648e455e6b",
+            "inc-f99ef2096711"
+          ]
+        },
+        {
+          "query": "flooding and displaced people",
+          "kind": "theme",
+          "hit": false,
+          "recall_at_4": 0.0,
+          "retrieved": [
+            "inc-0d947c95c938"
+          ]
+        },
+        {
+          "query": "tropical cyclones",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-b4f7f9e21710",
+            "inc-321d9abc4c4d",
+            "inc-95b2ec18ec7d",
+            "inc-1412169ee31f"
+          ]
+        },
+        {
+          "query": "Myanmar airstrike",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.25,
+          "retrieved": [
+            "inc-0d947c95c938"
+          ]
+        },
+        {
+          "query": "Israeli strikes in Gaza",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.5,
+          "retrieved": [
+            "inc-2f5fadd28db4",
+            "inc-0750e7840714",
+            "inc-c3071aff62a5"
+          ]
+        },
+        {
+          "query": "Gaza humanitarian situation",
+          "kind": "theme",
+          "hit": false,
+          "recall_at_4": 0.0,
+          "retrieved": [
+            "inc-2f5fadd28db4",
+            "inc-0750e7840714",
+            "inc-56d77974f844"
+          ]
+        },
+        {
+          "query": "Hamas commander killed",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.5,
+          "retrieved": [
+            "inc-0750e7840714",
+            "inc-0d947c95c938",
+            "inc-b24d08afc2b4"
+          ]
+        },
+        {
+          "query": "Sudan ceasefire",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.3333333333333333,
+          "retrieved": [
+            "inc-8cb74671dbfd"
+          ]
+        },
+        {
+          "query": "Iran US ceasefire talks",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-d92c3d7b76de",
+            "inc-fc7c1a2d1f71",
+            "inc-f9ed610470a0",
+            "inc-76f8942aec3e"
+          ]
+        },
+        {
+          "query": "attacks on shipping in the Strait of Hormuz",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 0.6666666666666666,
+          "retrieved": [
+            "inc-d92c3d7b76de",
+            "inc-34dd74567938",
+            "inc-76f8942aec3e",
+            "inc-14849fd5017c"
+          ]
+        },
+        {
+          "query": "oil prices and the Iran war",
+          "kind": "theme",
+          "hit": true,
+          "recall_at_4": 0.75,
+          "retrieved": [
+            "inc-2dbb7b0222ac",
+            "inc-e31778daf632",
+            "inc-00a3a26676c6",
+            "inc-acb2b6b0bd0d"
+          ]
+        },
+        {
+          "query": "Ukraine Russia peace talks",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.3333333333333333,
+          "retrieved": [
+            "inc-ef20991fe532",
+            "inc-e525a6ca5fed",
+            "inc-d55270a8d388",
+            "inc-1b91975459fd"
+          ]
+        },
+        {
+          "query": "shelling in Kyiv",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 0.3333333333333333,
+          "retrieved": [
+            "inc-e525a6ca5fed",
+            "inc-2a968ee64f8f"
+          ]
+        },
+        {
+          "query": "Myanmar refugees deported from Malaysia",
+          "kind": "event",
+          "hit": true,
+          "recall_at_4": 1.0,
+          "retrieved": [
+            "inc-2f5fadd28db4",
+            "inc-120f1fb394db",
+            "inc-0d947c95c938"
+          ]
+        }
+      ]
+    }
+  }
+}

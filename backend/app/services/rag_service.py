@@ -125,13 +125,19 @@ class RagService:
             .unique()
             .all()
         )
-        terms = self._query_terms(request.query)
+        return self.rank_by_keywords(incidents, request.query, category=request.category, severity=request.severity)
+
+    def rank_by_keywords(self, incidents, query: str, *, category=None, severity=None, limit=None) -> list[RetrievedChunk]:
+        """Keyword retrieval over incidents with their sources: the fallback when
+        semantic search is unavailable, and the baseline the evaluation compares
+        semantic search with (eval/run_eval.py)."""
+        terms = self._query_terms(query)
         scored: list[tuple[float, RetrievedChunk]] = []
 
         for incident in incidents:
-            if request.category and incident.category != request.category:
+            if category and incident.category != category:
                 continue
-            if request.severity and incident.severity != request.severity:
+            if severity and incident.severity != severity:
                 continue
 
             for source in incident.sources:
@@ -177,7 +183,7 @@ class RagService:
                 )
 
         scored.sort(key=lambda item: item[0], reverse=True)
-        return [chunk for _, chunk in scored[: settings.rag_top_k]]
+        return [chunk for _, chunk in scored[: limit or settings.rag_top_k]]
 
     def _query_terms(self, query: str) -> list[str]:
         stop_words = {

@@ -403,40 +403,37 @@ class IngestionService:
         response = await client.get("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson")
         response.raise_for_status()
         features = response.json().get("features", [])
-        sources: list[IngestSource] = []
-        for feature in features[:max_results]:
-            properties = feature.get("properties") or {}
-            geometry = feature.get("geometry") or {}
-            coordinates = geometry.get("coordinates") or []
-            longitude = float(coordinates[0]) if len(coordinates) >= 2 and coordinates[0] is not None else None
-            latitude = float(coordinates[1]) if len(coordinates) >= 2 and coordinates[1] is not None else None
-            magnitude = properties.get("mag")
-            place = properties.get("place") or "Unknown location"
-            event_time = self._datetime_from_millis(properties.get("time"))
-            title = properties.get("title") or f"Magnitude {magnitude} earthquake - {place}"
-            raw_text = (
+        return [source for source in map(self.usgs_source, features[:max_results]) if source is not None]
+
+    def usgs_source(self, feature: dict) -> IngestSource | None:
+        """One USGS GeoJSON event as a report; also used to build the evaluation set."""
+        properties = feature.get("properties") or {}
+        geometry = feature.get("geometry") or {}
+        coordinates = geometry.get("coordinates") or []
+        longitude = float(coordinates[0]) if len(coordinates) >= 2 and coordinates[0] is not None else None
+        latitude = float(coordinates[1]) if len(coordinates) >= 2 and coordinates[1] is not None else None
+        magnitude = properties.get("mag")
+        place = properties.get("place") or "Unknown location"
+        title = properties.get("title") or f"Magnitude {magnitude} earthquake - {place}"
+        url = properties.get("url")
+        if not url:
+            return None
+        return IngestSource(
+            title=title,
+            url=url,
+            publisher="USGS Earthquake Hazards Program",
+            published_at=self._datetime_from_millis(properties.get("time")),
+            raw_text=(
                 f"{title}. USGS reported a magnitude {magnitude} earthquake near {place}. "
                 f"Alert level: {properties.get('alert') or 'not assigned'}. "
                 f"Tsunami flag: {properties.get('tsunami', 0)}. "
                 f"Significance score: {properties.get('sig', 'unknown')}."
-            )
-            url = properties.get("url")
-            if not url:
-                continue
-            sources.append(
-                IngestSource(
-                    title=title,
-                    url=url,
-                    publisher="USGS Earthquake Hazards Program",
-                    published_at=event_time,
-                    raw_text=raw_text,
-                    category="Earthquake",
-                    location=place,
-                    latitude=latitude,
-                    longitude=longitude,
-                )
-            )
-        return sources
+            ),
+            category="Earthquake",
+            location=place,
+            latitude=latitude,
+            longitude=longitude,
+        )
 
     async def _fetch_reliefweb_reports(self, client: httpx.AsyncClient, max_results: int) -> list[IngestSource]:
         payload = {

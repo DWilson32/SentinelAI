@@ -1,0 +1,28 @@
+{"query": "earthquakes in Japan", "kind": "place", "relevant": ["inc-8795f35dcb39", "inc-b64ac5b13405", "inc-fe66730f7fc6", "inc-cf6bde2cce31", "inc-76d349562261", "inc-408814333f0f"]}
+{"query": "earthquake in the Philippines", "kind": "place", "relevant": ["inc-51c04ea28c0f", "inc-e142535c0c97", "inc-a4ffca061eed", "inc-9c2ee43c3a9b", "inc-467e199f0d00"]}
+{"query": "Indonesia earthquakes", "kind": "place", "relevant": ["inc-62e3bc6061ba", "inc-8ce490da11a3", "inc-b29398f58d73", "inc-feb17f6c15b5", "inc-8dd8efad4fbe", "inc-604e994b443e", "inc-c94ef6b89bd4"]}
+{"query": "Tonga earthquake", "kind": "place", "relevant": ["inc-436ec901aaea", "inc-e5c588d1b6c5", "inc-a3a04116641b"]}
+{"query": "Solomon Islands quake", "kind": "place", "relevant": ["inc-36920218c364", "inc-d200e7b5c5af", "inc-b3249af12adf", "inc-cc9b4eb9869e"]}
+{"query": "New Caledonia earthquakes", "kind": "place", "relevant": ["inc-9d041bbe9f3a", "inc-40ef40bd3f46", "inc-faedf367717b", "inc-dcb7e84a5db1"]}
+{"query": "earthquake in Afghanistan", "kind": "place", "relevant": ["inc-17aec19f8a3f"]}
+{"query": "Kamchatka earthquake", "kind": "place", "relevant": ["inc-0640480abde4", "inc-8bd144cda710", "inc-89d84ff5e7d8"]}
+{"query": "Taiwan earthquake", "kind": "place", "relevant": ["inc-6675cfeb5119"]}
+{"query": "Costa Rica earthquake", "kind": "place", "relevant": ["inc-3af98a265781"]}
+{"query": "Alaska earthquake", "kind": "place", "relevant": ["inc-28b775767790"]}
+{"query": "Mid-Atlantic Ridge earthquakes", "kind": "place", "relevant": ["inc-0fa7b346e549", "inc-663de0499002", "inc-62af92cc5594", "inc-7cf5cbd37dd1"]}
+{"query": "Papua New Guinea earthquake", "kind": "place", "relevant": ["inc-3257f7087bad", "inc-bf8c695c78fd"]}
+{"query": "Yemen earthquake", "kind": "place", "relevant": ["inc-66776889be10"]}
+{"query": "flood alerts", "kind": "theme", "relevant": ["inc-0c950f031206", "inc-22c7b3eb0226", "inc-f99ef2096711", "inc-a9648e455e6b"]}
+{"query": "flooding and displaced people", "kind": "theme", "relevant": ["inc-0c950f031206", "inc-22c7b3eb0226", "inc-f99ef2096711", "inc-a9648e455e6b"]}
+{"query": "tropical cyclones", "kind": "theme", "relevant": ["inc-b4f7f9e21710", "inc-1412169ee31f", "inc-321d9abc4c4d", "inc-95b2ec18ec7d", "inc-e86d515940f7"]}
+{"query": "Myanmar airstrike", "kind": "event", "relevant": ["inc-0d947c95c938", "inc-db83f857e7ef", "inc-b24d08afc2b4", "inc-2f5fadd28db4"]}
+{"query": "Israeli strikes in Gaza", "kind": "event", "relevant": ["inc-c3071aff62a5", "inc-a7c3e82abd6d", "inc-49182989e1b2", "inc-0750e7840714", "inc-cb45ccf4b88d", "inc-491d21475e12", "inc-fd6c70374724", "inc-d55270a8d388"]}
+{"query": "Gaza humanitarian situation", "kind": "theme", "relevant": ["inc-3dadf5002237", "inc-eff911b00691"]}
+{"query": "Hamas commander killed", "kind": "event", "relevant": ["inc-0750e7840714", "inc-49182989e1b2"]}
+{"query": "Sudan ceasefire", "kind": "event", "relevant": ["inc-8cb74671dbfd", "inc-2822807ef7ea", "inc-def41cb65ba2"]}
+{"query": "Iran US ceasefire talks", "kind": "event", "relevant": ["inc-76f8942aec3e", "inc-14849fd5017c", "inc-f9ed610470a0", "inc-9a71f1cfc88b", "inc-29aa06b4c378", "inc-51a58842ee75", "inc-fc7c1a2d1f71", "inc-d92c3d7b76de"]}
+{"query": "attacks on shipping in the Strait of Hormuz", "kind": "theme", "relevant": ["inc-d92c3d7b76de", "inc-f9ed610470a0", "inc-34dd74567938"]}
+{"query": "oil prices and the Iran war", "kind": "theme", "relevant": ["inc-acb2b6b0bd0d", "inc-57dc29c37e03", "inc-70c939d8fd77", "inc-2dbb7b0222ac", "inc-00a3a26676c6"]}
+{"query": "Ukraine Russia peace talks", "kind": "event", "relevant": ["inc-25230e97a497", "inc-ef20991fe532", "inc-a85a81322291"]}
+{"query": "shelling in Kyiv", "kind": "event", "relevant": ["inc-e525a6ca5fed", "inc-39e358f35a4a", "inc-f53a1ce8e2ba"]}
+{"query": "Myanmar refugees deported from Malaysia", "kind": "event", "relevant": ["inc-120f1fb394db", "inc-2f5fadd28db4"]}
