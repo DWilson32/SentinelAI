@@ -17,6 +17,8 @@ from app.services.incident_service import incident_service
 from app.services.ingestion_service import ingestion_service
 
 T0 = datetime(2026, 9, 29, 6, 38, tzinfo=timezone.utc)
+GAZA_FIRST = "3 Palestinians killed in Israeli strike, gunfire in Gaza despite ceasefire - Anadolu Ajansı"
+GAZA_SECOND = "Israeli attacks kill Palestinian woman, injure 5 others in Gaza despite ceasefire - Anadolu Ajansı"
 SANDWICH_GDACS = (
     "Green earthquake (Magnitude 4.8M, Depth:35km) in South Sandwich Islands Region "
     "29/09/2026 06:38 UTC, No people affected"
@@ -112,6 +114,18 @@ class TestNews:
         a = news("Airstrike near a market in Myanmar's Rakhine state kills 33 people - The Washington Post", T0)
         b = news("Airstrike near a market in Myanmar's Rakhine state kills 49 people - AP News", T0 + timedelta(hours=8.8))
         assert same_event(a, b, similarity=0.95)
+
+    def test_a_later_report_with_fewer_deaths_is_a_different_event(self):
+        # Live: two Israeli attacks in Gaza a day apart, merged at 0.94 before this rule.
+        a = news(GAZA_FIRST, T0)
+        b = news(GAZA_SECOND, T0 + timedelta(hours=23.4))
+        assert same_event(a, b, similarity=0.94) is None
+        assert same_event(b, a, similarity=0.94) is None
+
+    def test_a_later_report_without_a_toll_still_matches(self):
+        a = news("Airstrike near a market in Myanmar's Rakhine state kills 33 people - The Washington Post", T0)
+        b = news("UN condemns Myanmar airstrike on market in Rakhine state - Reuters", T0 + timedelta(hours=20))
+        assert same_event(a, b, similarity=0.93)
 
     def test_different_stories_below_the_threshold_stay_apart(self):
         # Live: a Sudan ceasefire plan and Iran's ceasefire talks scored 0.875.
@@ -256,6 +270,71 @@ class TestBackfill:
         assert detail.source_count == 2
         assert detail.risk_score == 71.5
         assert any(event.label == "Merged" for event in detail.timeline)
+
+    def test_a_split_undoes_a_merge_and_takes_back_the_old_id(self, db):
+        usgs_source, gdacs_source = quake_sources()
+        add_incident(db, "inc-usgs", usgs_source, risk_score=62.0)
+        add_incident(db, "inc-gdacs", gdacs_source, risk_score=71.5)
+        entity_resolver.apply_merges(db, entity_resolver.plan_merges(db))
+
+        new = entity_resolver.split(db, "inc-usgs", ["src-inc-gdacs"], "a test")
+        db.commit()
+
+        assert new.id == "inc-gdacs"
+        assert db.get(IncidentAliasModel, "inc-gdacs") is None
+        kept = db.get(IncidentModel, "inc-usgs")
+        assert [source.id for source in kept.sources] == ["src-inc-usgs"]
+        assert [source.id for source in new.sources] == ["src-inc-gdacs"]
+        assert (new.latitude, new.longitude) == (kept.latitude, kept.longitude)
+        assert [event.label for event in new.timeline] == ["Split"]
+        assert kept.timeline[-1].label == "Split"
+
+    def test_a_split_news_report_gets_its_own_place_score_and_evidence(self, db):
+        first = IngestSource(
+            title=GAZA_FIRST,
+            url="https://news.example/gaza-1",
+            publisher="Anadolu Ajansı",
+            published_at=T0,
+            raw_text="Three Palestinians were killed in an Israeli strike and gunfire in Gaza.",
+            category="Conflict",
+            location="Gaza, Palestinian Territory",
+        )
+        add_incident(db, "inc-gaza", first, risk_score=60.0)
+        db.add(
+            SourceModel(
+                id="src-gaza-2",
+                incident_id="inc-gaza",
+                title=GAZA_SECOND,
+                url="https://news.example/gaza-2",
+                publisher="Anadolu Ajansı",
+                credibility_score=0.8,
+                published_at=T0 + timedelta(hours=23.4),
+                raw_text="Israeli attacks killed a Palestinian woman and injured five others in Gaza.",
+            )
+        )
+        db.commit()
+
+        new = entity_resolver.split(db, "inc-gaza", ["src-gaza-2"], "the later report gives fewer deaths")
+        db.commit()
+
+        assert new.id.startswith("inc-") and new.id != "inc-gaza"
+        assert new.title == GAZA_SECOND
+        assert new.location == "Gaza, Palestinian Territory"
+        assert new.evidence["independent_sources"] == 1
+        kept = db.get(IncidentModel, "inc-gaza")
+        assert kept.title == GAZA_FIRST
+        assert kept.evidence["independent_sources"] == 1
+        assert new.recommended_actions and kept.recommended_actions
+
+    def test_a_split_must_leave_the_incident_a_report(self, db):
+        usgs_source, _ = quake_sources()
+        add_incident(db, "inc-usgs", usgs_source, risk_score=62.0)
+        try:
+            entity_resolver.split(db, "inc-usgs", ["src-inc-usgs"], "a test")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("split moved every report")
 
     def test_nothing_to_merge_when_every_incident_is_distinct(self, db):
         usgs_source, _ = quake_sources()

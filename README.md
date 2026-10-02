@@ -153,9 +153,13 @@ One event is one incident. A report about something already tracked becomes anot
 
 - **Earthquakes** match on physical identity: epicentres within 100 km, magnitudes within 0.5, origin times within 5 minutes. This catches USGS and GDACS reporting the same quake while keeping real aftershocks apart.
 - **News** matches a report in the same category from the last 48 hours on an identical headline, or on embedding similarity of at least 0.92. Text that is mostly not in Latin script needs an identical headline, because the embedding model is English-only.
+- **Similarity is not enough when the toll falls.** A later report that gives fewer deaths than the earlier one never matches on similarity, because a toll still being counted only rises. Daily reports from one conflict read alike: two Gaza attacks a day apart ("3 Palestinians killed", then "kill Palestinian woman") scored 0.94.
+- **The title follows the toll.** An incident takes the headline of its earliest report with the highest death toll, so a toll counted up from 33 to 50 shows 50.
 - **GDACS cyclones and floods** are never matched on text, because their alerts come from templates and different storms read alike. Each has a unique event id in its URL.
 
 The thresholds were set against the live data; the module docstring records the cases. Incidents ingested before this existed can be merged with `python scripts/merge_duplicates.py` (a dry run; add `--apply --backup FILE` to merge). Merged ids stay valid as aliases of the incident they joined.
+
+A merge the rules now refuse can be undone. `python scripts/split_incident.py` lists the pairs, and `python scripts/split_incident.py INCIDENT SOURCE... --apply --backup FILE` moves those reports into an incident of their own. That incident takes back the id the reports had before the merge. `python scripts/tidy_incident_text.py` decodes HTML entities left in older feed text, and re-titles incidents by their toll. Re-index after either script.
 
 ### Geocoding
 

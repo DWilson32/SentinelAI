@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+import html
 import re
 import logging
 import xml.etree.ElementTree as ET
@@ -19,6 +20,7 @@ from app.services.embedding_service import embedding_service
 from app.services.entity_resolution import Pending, Report, entity_resolver, mostly_latin
 from app.services import geocoder
 from app.services.credibility import apply_evidence, publisher_credibility
+from app.services.headlines import retitle, summarize
 from app.services.feed_status_service import (
     FEEDS,
     GDELT_COOLDOWN,
@@ -239,7 +241,7 @@ class IngestionService:
             latitude=latitude,
             longitude=longitude,
             geo_precision=precision,
-            summary=self._summarize(source.raw_text),
+            summary=summarize(source.raw_text),
             credibility=credibility,
             prediction=prediction,
             report=Report(
@@ -330,6 +332,8 @@ class IngestionService:
             )
         )
         incident.updated_at = now
+        # A later report can carry a toll that has since risen.
+        retitle(incident)
         # An incident is as severe as its most severe report.
         if item.prediction.risk_score > incident.risk_score:
             self._apply_prediction(incident, item.prediction)
@@ -662,8 +666,10 @@ class IngestionService:
         return datetime.fromtimestamp(float(value) / 1000, tz=timezone.utc)
 
     def _plain_text(self, value: str) -> str:
+        # Entities are decoded after the tags go. Google News descriptions end in
+        # "</a>&nbsp;&nbsp;<font>Publisher</font>", and the &nbsp; was kept as text.
         without_tags = re.sub(r"<[^>]+>", " ", value)
-        return " ".join(without_tags.split())
+        return " ".join(html.unescape(without_tags).split())
 
     def _parse_rfc2822(self, value: str | None) -> datetime | None:
         if not value:
@@ -727,10 +733,6 @@ class IngestionService:
         known_locations = ["India", "United States", "Brazil", "California", "Odisha", "Assam", "Europe"]
         lowered = text.lower()
         return next((location for location in known_locations if location.lower() in lowered), "Unknown")
-
-    def _summarize(self, text: str) -> str:
-        compact = " ".join(text.split())
-        return compact[:280] + ("..." if len(compact) > 280 else "")
 
 
 ingestion_service = IngestionService()

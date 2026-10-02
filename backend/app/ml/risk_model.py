@@ -261,3 +261,26 @@ class TrainedRiskModel:
 # The hand-tuned v2 model, kept so the evaluation can compare against it.
 heuristic_risk_model = HeuristicRiskModel()
 risk_model = TrainedRiskModel()
+
+
+def rate_incident(incident) -> None:
+    """Score an incident as its most severe report, each report scored on its own.
+
+    Sets the risk columns only; severity, status and actions follow from the
+    score and the evidence together (credibility.apply_evidence).
+    """
+    best = max(
+        (
+            risk_model.predict(
+                RiskPredictionRequest(
+                    title=source.title, text=source.raw_text, category=incident.category, source_count=1
+                )
+            )
+            for source in incident.sources
+        ),
+        key=lambda prediction: prediction.risk_score,
+    )
+    incident.risk_score = best.risk_score
+    incident.risk_confidence = best.confidence
+    incident.risk_drivers = best.drivers
+    incident.feature_importance = best.feature_importance

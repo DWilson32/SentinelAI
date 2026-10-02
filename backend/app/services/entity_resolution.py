@@ -19,8 +19,10 @@ The rules were set against the live data on 2 Oct 2026, when every one of the
   published within 48 hours, has cosine similarity of at least 0.92. Every
   English pair above that in the live data was the same story, though not
   always the same event: two Israeli strikes in Gaza a day apart scored 0.94.
-  Below about 0.90 different stories start to pair up (a Sudan ceasefire plan
-  and Iran's ceasefire talks scored 0.875).
+  So a later report that gives fewer deaths than the earlier one does not
+  match on similarity, since a toll still being counted only rises. Below
+  about 0.90 different stories start to pair up (a Sudan ceasefire plan and
+  Iran's ceasefire talks scored 0.875).
 * Text that is mostly not in Latin script matches only on an identical
   headline. The embedding model is English-only, and unrelated Russian and
   Ukrainian articles scored up to 0.94 against each other.
@@ -33,6 +35,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, selectinload
@@ -46,8 +49,11 @@ from app.db.models import (
     SourceModel,
     TimelineEventModel,
 )
+from app.ml.risk_model import rate_incident
+from app.services import geocoder
+from app.services.casualties import read
 from app.services.credibility import STRUCTURED_HOSTS, apply_evidence, is_structured
-from app.services.headlines import normalized_title
+from app.services.headlines import normalized_title, retitle, summarize
 from app.services.lifecycle import as_utc
 from app.services.vector_store import vector_store
 
@@ -176,9 +182,23 @@ def same_event(a: Report, b: Report, similarity: float | None = None) -> str | N
         and similarity >= NEWS_MIN_SIMILARITY
         and mostly_latin(a.title)
         and mostly_latin(b.title)
+        and not toll_falls(a, b)
     ):
         return f"similar report, {similarity:.2f} similarity"
     return None
+
+
+def toll_falls(a: Report, b: Report) -> bool:
+    """Whether the later of two reports gives fewer deaths than the earlier.
+
+    A toll still being counted only rises, so a lower figure later means a
+    different event, or more rarely a correction. Daily reports from one
+    conflict read alike: Gaza's "3 Palestinians killed in Israeli strike" and,
+    a day later, "Israeli attacks kill Palestinian woman" scored 0.94.
+    """
+    earlier, later = sorted((a, b), key=lambda report: as_utc(report.published_at))
+    first, second = read(earlier.title)[0], read(later.title)[0]
+    return bool(first and second and second < first)
 
 
 def _same_earthquake(a: Report, b: Report) -> str | None:
@@ -409,8 +429,103 @@ class EntityResolver:
                 )
             # The sources moved in bulk, so reload them before weighing the evidence.
             db.expire(survivor, ["sources"])
+            retitle(survivor)
             apply_evidence(survivor)
         db.commit()
+
+    def split(self, db: Session, incident_id: str, source_ids: list[str], reason: str) -> IncidentModel:
+        """Move reports out of an incident into one of their own: the undo of a
+        merge that the rules now refuse.
+
+        The reports' index chunks go with them; the investigations stay, since
+        they covered both. Each incident is re-scored, re-titled and re-weighed
+        from the reports it keeps. Where the merge that brought the reports in is
+        on record, the new incident takes back the id they had, so links to it
+        lead to the right event again. Does not commit.
+        """
+        incident = db.get(IncidentModel, incident_id)
+        if incident is None:
+            raise ValueError(f"No incident {incident_id}")
+        moving = [source for source in incident.sources if source.id in set(source_ids)]
+        if len(moving) != len(set(source_ids)) or len(moving) == len(incident.sources):
+            raise ValueError("Name some, but not all, of the incident's own sources")
+        now = datetime.now(timezone.utc)
+        moving.sort(key=lambda source: as_utc(source.published_at))
+        alias = self._merged_alias(db, incident, moving)
+        if alias is not None:
+            db.delete(alias)
+            db.flush()
+
+        new = IncidentModel(
+            id=alias.alias_id if alias is not None else f"inc-{uuid4().hex[:12]}",
+            title=moving[0].title,
+            category=incident.category,
+            location="Global",
+            latitude=0.0,
+            longitude=0.0,
+            summary=summarize(moving[0].raw_text),
+            created_at=now,
+            updated_at=now,
+        )
+        if any(is_structured(source.url) for source in moving):
+            # Feed coordinates are stored on the incident, not the report.
+            new.location, new.latitude, new.longitude = incident.location, incident.latitude, incident.longitude
+            new.geo_precision = incident.geo_precision
+        else:
+            place = next(filter(None, (geocoder.locate(source.title) for source in moving)), None)
+            if place is not None:
+                new.location, new.latitude, new.longitude = place.label, place.latitude, place.longitude
+                new.geo_precision = place.precision
+        for source in moving:
+            source.incident = new
+        new.timeline = [
+            TimelineEventModel(timestamp=now, label="Split", description=f"Separated from {incident.id}: {reason}.")
+        ]
+        retitle(new)
+        rate_incident(new)
+        apply_evidence(new)
+        db.add(new)
+        db.flush()
+        db.execute(
+            update(SourceChunkModel)
+            .where(SourceChunkModel.source_id.in_([source.id for source in moving]))
+            .values(incident_id=new.id)
+            .execution_options(synchronize_session=False)
+        )
+
+        # The title may have come from a report that has just left.
+        if incident.title not in {source.title for source in incident.sources}:
+            first = min(incident.sources, key=lambda source: as_utc(source.published_at))
+            incident.title, incident.summary = first.title, summarize(first.raw_text)
+        retitle(incident)
+        rate_incident(incident)
+        apply_evidence(incident)
+        incident.updated_at = now
+        incident.timeline.append(
+            TimelineEventModel(
+                timestamp=now,
+                label="Split",
+                description=f"Moved to {new.id} ({reason}): {moving[0].title}",
+            )
+        )
+        db.flush()
+        return new
+
+    def _merged_alias(
+        self, db: Session, incident: IncidentModel, moving: list[SourceModel]
+    ) -> IncidentAliasModel | None:
+        """The alias left when these reports were merged in, if the record is unambiguous."""
+        titles = [source.title for source in moving]
+        merges = [
+            event
+            for event in incident.timeline
+            if event.label == "Merged" and any(event.description.endswith(f": {title}") for title in titles)
+        ]
+        if len(merges) != 1:
+            return None
+        aliases = db.scalars(select(IncidentAliasModel).where(IncidentAliasModel.incident_id == incident.id)).all()
+        matching = [alias for alias in aliases if as_utc(alias.merged_at) == as_utc(merges[0].timestamp)]
+        return matching[0] if len(matching) == 1 else None
 
 
 entity_resolver = EntityResolver()

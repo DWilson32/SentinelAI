@@ -27,8 +27,7 @@ from sqlalchemy.orm import selectinload  # noqa: E402
 
 from app.db.database import SessionLocal, is_postgres, migrate_db_tables  # noqa: E402
 from app.db.models import IncidentModel  # noqa: E402
-from app.ml.risk_model import risk_model  # noqa: E402
-from app.schemas.risk import RiskPredictionRequest  # noqa: E402
+from app.ml.risk_model import rate_incident  # noqa: E402
 from app.services.credibility import apply_evidence, publisher_credibility  # noqa: E402
 
 RATED = ("risk_score", "severity", "severity_note", "status", "recommended_actions", "risk_drivers", "feature_importance")
@@ -63,24 +62,7 @@ def main() -> None:
             for source in incident.sources:
                 source.credibility_score = publisher_credibility(source.publisher, source.url)
                 tiers[source.credibility_score] += 1
-            best = max(
-                (
-                    risk_model.predict(
-                        RiskPredictionRequest(
-                            title=source.title,
-                            text=source.raw_text,
-                            category=incident.category,
-                            source_count=1,
-                        )
-                    )
-                    for source in incident.sources
-                ),
-                key=lambda prediction: prediction.risk_score,
-            )
-            incident.risk_score = best.risk_score
-            incident.risk_confidence = best.confidence
-            incident.risk_drivers = best.drivers
-            incident.feature_importance = best.feature_importance
+            rate_incident(incident)
             apply_evidence(incident)
             moves[(before[0], incident.severity)] += 1
             scores_changed += incident.risk_score != before[1]
