@@ -179,7 +179,7 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                     <p className="mt-1 text-xs text-muted">{source.publisher} - credibility {(source.credibility_score * 100).toFixed(0)}%</p>
                     {copies.get(source.id) && (
                       <p className="mt-1 text-xs font-medium text-amber-700">
-                        {`Repeats ${copies.get(source.id)?.copy_of}'s report (${copies.get(source.id)?.reason}), so it does not count as independent`}
+                        {`Repeats the report from ${copies.get(source.id)?.copy_of} (${copies.get(source.id)?.reason}), so it does not count as independent`}
                       </p>
                     )}
                   </div>
