@@ -195,12 +195,14 @@ Baseline (`eval/results/baseline.md`):
 
 ### Tests
 
-The entity resolution and geocoding rules are covered by tests:
+The tests cover entity resolution, geocoding, credibility, the risk model, the agents and the model gateway. They run against in-memory SQLite, without network access or a model download:
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest tests
 ```
+
+GitHub Actions (`.github/workflows/tests.yml`) runs them on every push and pull request, on Python 3.12.8 as Render does. The same workflow type-checks and builds the frontend as Vercel does.
 
 ## RAG (semantic chat)
 
@@ -208,9 +210,10 @@ python -m pytest tests
 - **Live joins** — search joins back to incidents, so category, severity and risk are always current rather than copied in at index time
 - **FastEmbed** — local embeddings, no API key. The model is downloaded at build time (`scripts/prefetch_model.py`) so cold starts load it from disk in well under a second
 - **Incremental indexing** — each chunk stores a content hash; a reindex embeds only what changed
+- **Fits the free server's 512 MB** — texts are embedded 2 at a time with ONNX Runtime's memory arena off. Embedding all 201 live chunks in one call adds about 33 MB, and the memory is released afterwards. In batches of 64, the same call added over 1 GB and the free server was killed. The vectors are identical either way.
 - **Similarity floor** — chunks below `RAG_MIN_SIMILARITY` (0.60, calibrated on live queries) are not cited, so off-topic questions get "nothing found" instead of irrelevant sources
 - **Keyword fallback** — used only when semantic search is unavailable (SQLite, empty index, query error); the response says which path answered
-- **OpenAI** — optional richer answers when `OPENAI_API_KEY` is set
+- **Written answers** — the configured language model writes the answer from the cited sources (see below); without one, a template does, and the response says which
 
 Reindex:
 
@@ -224,6 +227,8 @@ Useful `.env` knobs:
 RAG_CHUNK_CHARS=900
 RAG_CHUNK_OVERLAP_CHARS=150
 RAG_MIN_SIMILARITY=0.60
+EMBEDDING_BATCH_SIZE=2
+EMBEDDING_MEMORY_ARENA=false
 USE_OPENAI_EMBEDDINGS=false
 OPENAI_API_KEY=
 ```

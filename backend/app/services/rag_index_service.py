@@ -10,7 +10,8 @@ from app.db.models import IncidentModel, SourceModel
 from app.services.embedding_service import embedding_service
 from app.services.vector_store import vector_store
 
-# Bounds peak memory while embedding: the model holds activations per batch.
+# Chunks written to the index per round. Memory while embedding is bounded by
+# settings.embedding_batch_size instead, inside the embedding service.
 EMBED_BATCH_SIZE = 64
 
 

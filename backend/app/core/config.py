@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     # they are baked into the deploy image. Render's free tier discards files written
     # at runtime on every spin-down, which would mean re-downloading on each cold start.
     embedding_cache_dir: str = "./.model_cache"
+    # Peak memory grows with the batch: embedding the 201 live chunks added 1,028 MB
+    # in batches of 64 (a re-index that killed the 512 MB free server) and 3,875 MB
+    # in one batch, as a large feed sync would, against 32 MB in batches of 2. ONNX
+    # Runtime's memory arena also kept its peak after every call, leaving the server
+    # at 300-400 MB between syncs; without it, memory falls back once a batch is done.
+    # Neither changes the vectors.
+    embedding_batch_size: int = 2
+    embedding_memory_arena: bool = False
     use_openai_embeddings: bool = False
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"

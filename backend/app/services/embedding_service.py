@@ -18,7 +18,11 @@ def model_cache_dir() -> str:
 
 @lru_cache(maxsize=1)
 def _local_model() -> TextEmbedding:
-    return TextEmbedding(model_name=settings.embedding_model, cache_dir=model_cache_dir())
+    return TextEmbedding(
+        model_name=settings.embedding_model,
+        cache_dir=model_cache_dir(),
+        enable_cpu_mem_arena=settings.embedding_memory_arena,
+    )
 
 
 class EmbeddingService:
@@ -31,7 +35,9 @@ class EmbeddingService:
             return []
         if settings.openai_api_key and settings.use_openai_embeddings:
             return self._embed_openai(texts)
-        return [vector.tolist() for vector in _local_model().embed(texts)]
+        # fastembed batches 256 texts by default, which a feed sync can reach;
+        # the batch size is what bounds memory (see settings.embedding_batch_size).
+        return [vector.tolist() for vector in _local_model().embed(texts, batch_size=settings.embedding_batch_size)]
 
     def _embed_openai(self, texts: list[str]) -> list[list[float]]:
         from openai import OpenAI
