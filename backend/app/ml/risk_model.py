@@ -1,10 +1,14 @@
+import json
 import math
 import re
+from pathlib import Path
 
+from app.ml.features import FEATURES, extract
 from app.schemas.risk import RiskPrediction, RiskPredictionRequest
+from app.services import casualties
 
 
-class CrisisRiskModel:
+class HeuristicRiskModel:
     """Hand-tuned heuristic risk scorer.
 
     The score is a logistic (sigmoid) function of keyword densities and a
@@ -147,4 +151,113 @@ class CrisisRiskModel:
         return "General"
 
 
-risk_model = CrisisRiskModel()
+LEVELS = ("low", "medium", "high", "critical")
+
+DRIVER_TEXT = {
+    "alert_yellow": "Agency alert: yellow",
+    "alert_orange": "Agency alert: orange",
+    "alert_red": "Agency alert: red",
+    "agency_report": "Agency report",
+    "deaths_log10": "Reported deaths",
+    "injuries": "Injuries reported",
+    "magnitude_above_4_5": "Earthquake magnitude",
+    "urgency_terms": "Urgent crisis language",
+    "infrastructure_terms": "Infrastructure affected",
+    "exposure_terms": "Population exposure",
+    "earthquake": "Earthquake category",
+    "flood": "Flood category",
+    "conflict": "Conflict category",
+}
+
+
+class TrainedRiskModel:
+    """Multinomial logistic regression trained on the labelled evaluation set
+    by eval/train_risk.py, and loaded from risk_model_v3.json. That file also
+    holds its cross-validated scores, on incidents each fold had not seen.
+
+    The risk score is the severity band, 25 points each, plus the model's
+    probability within it: low 6-25, medium 31-50, high 56-75, critical 81-100.
+
+    The training set has no news story with 100 or more deaths, so for those
+    the labelling rubric's own thresholds (eval/RUBRIC.md) act as a floor:
+    100+ reported deaths is at least high, 1,000+ critical.
+    """
+
+    def __init__(self, path: Path = Path(__file__).with_name("risk_model_v3.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if tuple(data["features"]) != FEATURES:
+            raise ValueError("risk_model_v3.json was trained on different features; retrain it")
+        self.model_name = data["model"]
+        self.classes = data["classes"]
+        self.coef = data["coef"]
+        self.intercept = data["intercept"]
+        self.cross_validated = data["cross_validated"]
+        self._heuristic = HeuristicRiskModel()
+
+    def predict(self, request: RiskPredictionRequest) -> RiskPrediction:
+        # request.source_credibility and source_count are accepted for
+        # compatibility but not used: credibility gates severity separately.
+        category = request.category or self._heuristic._infer_category(request.title, request.text)
+        values = extract(request.title, request.text, category)
+        x = [values[name] for name in FEATURES]
+        logits = [bias + sum(w * v for w, v in zip(weights, x)) for weights, bias in zip(self.coef, self.intercept)]
+        peak = max(logits)
+        exps = [math.exp(logit - peak) for logit in logits]
+        probabilities = [e / sum(exps) for e in exps]
+        index = max(range(len(LEVELS)), key=lambda k: probabilities[k])
+
+        deaths, injured = casualties.read(request.title)
+        floor = LEVELS.index(casualties.severity(casualties.Casualties(deaths, injured, "")))
+        floored = floor > index and floor >= LEVELS.index("high")
+        if floored:
+            index = floor
+        severity = LEVELS[index]
+        within = 0.25 if floored else probabilities[index]
+        risk_score = round(25 * index + 25 * within, 1)
+
+        contributions = {name: self.coef[index][j] * x[j] for j, name in enumerate(FEATURES) if x[j]}
+        total = sum(abs(c) for c in contributions.values()) or 1.0
+        importance = {
+            name: round(abs(c) / total, 3)
+            for name, c in sorted(contributions.items(), key=lambda item: abs(item[1]), reverse=True)
+        }
+        return RiskPrediction(
+            risk_score=risk_score,
+            severity=severity,
+            confidence=round(probabilities[index] if not floored else max(probabilities[index], 0.25), 2),
+            drivers=self._drivers(values, contributions, severity, deaths, floored),
+            feature_importance=importance,
+            features={name: round(value, 4) for name, value in values.items()},
+            model_name=self.model_name,
+        )
+
+    def severity_for(self, score: float) -> str:
+        """The band a risk score falls in; the inverse of the score encoding."""
+        if score > 75:
+            return "critical"
+        if score > 50:
+            return "high"
+        if score > 25:
+            return "medium"
+        return "low"
+
+    def _drivers(self, values: dict, contributions: dict, severity: str, deaths: int, floored: bool) -> list[str]:
+        drivers = []
+        if floored:
+            drivers.append(f"Reported deaths: {deaths} (the rubric's floor for {severity})")
+        elif deaths:
+            drivers.append(f"Reported deaths: {deaths}")
+        if values["agency_report"] and not (values["alert_yellow"] or values["alert_orange"] or values["alert_red"]):
+            drivers.append("Agency alert: green or none")
+        for name, contribution in sorted(contributions.items(), key=lambda item: item[1], reverse=True):
+            text = DRIVER_TEXT[name]
+            if contribution > 0 and name not in ("deaths_log10",) and text not in drivers:
+                drivers.append(text)
+        if not deaths and not values["agency_report"]:
+            drivers.append("No casualties reported")
+        return drivers[:5]
+
+
+# The hand-tuned v2 model, kept so the evaluation can compare against it.
+heuristic_risk_model = HeuristicRiskModel()
+risk_model = TrainedRiskModel()

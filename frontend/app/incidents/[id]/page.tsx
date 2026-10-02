@@ -35,6 +35,23 @@ function InvestigationRuns({ number, runs }: { number: number; runs: AgentRun[] 
   );
 }
 
+// The risk model's inputs (backend/app/ml/features.py), in words.
+const FEATURE_LABELS: Record<string, string> = {
+  alert_yellow: "agency alert: yellow",
+  alert_orange: "agency alert: orange",
+  alert_red: "agency alert: red",
+  agency_report: "agency report",
+  deaths_log10: "reported deaths",
+  injuries: "injuries reported",
+  magnitude_above_4_5: "earthquake magnitude",
+  urgency_terms: "urgent language",
+  infrastructure_terms: "infrastructure affected",
+  exposure_terms: "population exposure",
+  earthquake: "earthquake",
+  flood: "flood",
+  conflict: "conflict",
+};
+
 const PLACEMENT: Record<string, string> = {
   city: "located from the headline",
   region: "approximate: region named in the headline",
@@ -86,13 +103,13 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
             <div className="rounded-lg border border-line bg-panel p-4 shadow-soft lg:min-w-56">
               <p className="flex items-center gap-2 text-sm text-muted">
                 {/* An explicit space: flex gap only spaces it visually, so without this
-                    the text reads "Risk Scoreheuristic" to copy-paste and screen readers. */}
+                    the text reads "Risk Scoretrained" to copy-paste and screen readers. */}
                 Risk Score{" "}
                 <span
                   className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted"
-                  title="Weights are hand-tuned, not learned from labelled outcomes"
+                  title="A logistic regression learned from labelled incidents, scored on incidents it had not seen. The score is the severity band (25 points each) plus the model's confidence within it."
                 >
-                  heuristic
+                  trained
                 </span>
               </p>
               <p className="mt-1 text-4xl font-bold text-ink">{incident.risk_score}</p>
@@ -152,7 +169,7 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                   {featureEntries.map(([feature, value]) => (
                     <div key={feature}>
                       <div className="flex justify-between gap-2 text-xs text-muted">
-                        <span>{feature.replaceAll("_", " ")}</span>
+                        <span>{FEATURE_LABELS[feature] ?? feature.replaceAll("_", " ")}</span>
                         <span>{Math.round(value * 100)}%</span>
                       </div>
                       <div className="mt-1 h-2 rounded bg-slate-100">

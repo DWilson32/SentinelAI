@@ -1,5 +1,6 @@
-"""Read reported deaths and injuries from news headlines, to suggest a label
-under RUBRIC.md. Suggestions only: every news label is reviewed by a person.
+"""Read reported deaths and injuries from news headlines. The risk model uses
+them as inputs, and the evaluation set uses them to suggest news labels under
+eval/RUBRIC.md, each then reviewed by a person.
 """
 
 import re

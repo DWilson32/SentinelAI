@@ -185,7 +185,7 @@ python -m eval.run_eval --save NAME   # writes eval/results/NAME.md
 ```
 
 Baseline (`eval/results/baseline.md`):
-- The heuristic risk model rates almost everything medium, for **14% severity accuracy** (macro F1 0.06). It ignores the agencies' alerts entirely.
+- The heuristic risk model rates almost everything medium, for **14% severity accuracy** (macro F1 0.06). It ignores the agencies' alerts entirely. The trained model that replaced it scores **98% cross-validated** (see Risk scoring).
 - Retrieval recall@4 is **0.83 with pgvector semantic search, against 0.66 with the keyword search** that served every query while the old vector store was down.
 
 ### Tests
@@ -238,9 +238,17 @@ Pipeline: **Research → Verification → Prediction → Strategy → Report**
 - Without key: rule-based fallbacks grounded in incident data
 - Persists agent runs and an executive report per investigation
 
-## Risk scoring (heuristic)
+## Risk scoring (trained)
 
-The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v2`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure) and a category prior. The weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. That confidence measures how extreme a score is, not how well the report is supported, so the dashboard shows credibility from independent sources instead (below). Training the model needs a labelled evaluation set; see the roadmap.
+The pipeline rates each report with `sentinel-logistic-risk-v3`, a multinomial logistic regression trained on the labelled evaluation set (`backend/eval/train_risk.py`). Its inputs are only what a report carries on arrival (`app/ml/features.py`): the agency's alert level, reported deaths and injuries, earthquake magnitude, the keyword signals the old heuristic used, and the category.
+
+**Accuracy: 98% cross-validated (macro F1 0.98), against 14% for the hand-tuned v2 heuristic it replaces.** "Cross-validated" means each incident was rated by a model trained without it. The heuristic rated nearly everything medium. The two kinds of incident tell different stories:
+- **Disasters, 100%.** The model learned to trust the agencies' alerts, which the heuristic ignored.
+- **News, 91%.** This is the harder test. Its misses are reports whose impact the casualty reader cannot see: "deadly" with no figure, damage to ships, Russian-language headlines.
+
+No training example reports 100 or more deaths, so for those the labelling rubric's own thresholds act as a floor (100+ is high, 1,000+ critical). The risk score is the severity band (25 points each) plus the model's confidence within it, so low is 6–25 and critical 81–100.
+
+Production loads the learned weights from `app/ml/risk_model_v3.json` and does not need scikit-learn. To retrain: `pip install -r requirements-dev.txt && python -m eval.train_risk`.
 
 Source credibility is deliberately not part of the score. It measures how sure we are of a report, not how bad the event is: in v1 a trusted source raised the risk of minor events. The `source_credibility` request field is still accepted, but it is ignored.
 

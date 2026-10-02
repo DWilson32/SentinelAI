@@ -26,7 +26,7 @@ from app.db.database import SessionLocal, is_postgres
 from app.db.models import IncidentModel
 from app.services.credibility import is_structured, publisher_credibility
 from app.services.ingestion_service import ingestion_service
-from eval import casualties
+from app.services import casualties
 
 HERE = Path(__file__).resolve().parent
 OUTPUT = HERE / "incidents.jsonl"

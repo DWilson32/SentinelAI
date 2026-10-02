@@ -1,0 +1,165 @@
+{
+  "model": "sentinel-logistic-risk-v3",
+  "trained": "2026-10-02",
+  "features": [
+    "alert_yellow",
+    "alert_orange",
+    "alert_red",
+    "agency_report",
+    "deaths_log10",
+    "injuries",
+    "magnitude_above_4_5",
+    "urgency_terms",
+    "infrastructure_terms",
+    "exposure_terms",
+    "earthquake",
+    "flood",
+    "conflict"
+  ],
+  "classes": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "coef": [
+    [
+      -1.58369,
+      -1.78527,
+      -1.67111,
+      0.01368,
+      -1.39768,
+      -0.88436,
+      -1.37494,
+      -0.57139,
+      -0.22635,
+      0.19813,
+      0.82661,
+      -0.81292,
+      -0.00963
+    ],
+    [
+      2.81006,
+      -0.82804,
+      -0.81845,
+      -0.92582,
+      1.53061,
+      0.96281,
+      0.3052,
+      0.60833,
+      0.2348,
+      0.05702,
+      -0.23638,
+      -0.68943,
+      0.9428
+    ],
+    [
+      -0.61144,
+      3.47359,
+      -0.84447,
+      0.46833,
+      -0.06814,
+      -0.04018,
+      0.43583,
+      -0.01893,
+      -0.00433,
+      -0.12383,
+      -0.19889,
+      0.66722,
+      -0.47805
+    ],
+    [
+      -0.61493,
+      -0.86029,
+      3.33403,
+      0.4438,
+      -0.06479,
+      -0.03827,
+      0.63391,
+      -0.01801,
+      -0.00412,
+      -0.13132,
+      -0.39133,
+      0.83513,
+      -0.45512
+    ]
+  ],
+  "intercept": [
+    2.2745,
+    0.63453,
+    -1.41821,
+    -1.49081
+  ],
+  "training_set": {
+    "incidents": 227,
+    "sources": 260,
+    "C": 1.0,
+    "class_weight": "balanced"
+  },
+  "cross_validated": {
+    "accuracy": 0.978,
+    "macro_f1": 0.9758,
+    "by_kind": {
+      "hazard": {
+        "accuracy": 1.0,
+        "n": 169
+      },
+      "news": {
+        "accuracy": 0.9137931034482759,
+        "n": 58
+      }
+    },
+    "per_class": {
+      "low": {
+        "precision": 0.9568965517241379,
+        "recall": 1.0,
+        "f1": 0.9779735682819383,
+        "support": 111
+      },
+      "medium": {
+        "precision": 1.0,
+        "recall": 0.8611111111111112,
+        "f1": 0.9253731343283582,
+        "support": 36
+      },
+      "high": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 40
+      },
+      "critical": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 40
+      }
+    },
+    "confusion": {
+      "low": {
+        "low": 111,
+        "medium": 0,
+        "high": 0,
+        "critical": 0
+      },
+      "medium": {
+        "low": 5,
+        "medium": 31,
+        "high": 0,
+        "critical": 0
+      },
+      "high": {
+        "low": 0,
+        "medium": 0,
+        "high": 40,
+        "critical": 0
+      },
+      "critical": {
+        "low": 0,
+        "medium": 0,
+        "high": 0,
+        "critical": 40
+      }
+    }
+  }
+}

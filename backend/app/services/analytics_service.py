@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import RiskSnapshotModel
+from app.ml.risk_model import risk_model
 from app.schemas.analytics import AnalyticsOverview, CategoryCount, RiskTrendPoint, SeverityCount
 from app.services.incident_service import incident_service
 
@@ -63,6 +64,7 @@ class AnalyticsService:
             active_incidents=totals["active_incidents"],
             critical_incidents=totals["critical_incidents"],
             average_risk_score=totals["average_risk_score"],
+            model_name=risk_model.model_name,
         )
         db.add(snapshot)
         db.commit()
@@ -99,6 +101,8 @@ class AnalyticsService:
             db.scalars(
                 select(RiskSnapshotModel)
                 .where(RiskSnapshotModel.captured_at >= since)
+                # A new risk model starts a new trend: its scores are on another scale.
+                .where(RiskSnapshotModel.model_name == risk_model.model_name)
                 .order_by(RiskSnapshotModel.captured_at.desc())
                 .limit(TREND_MAX_POINTS)
             ).all()

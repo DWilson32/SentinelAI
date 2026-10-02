@@ -56,6 +56,9 @@ class RiskSnapshotModel(Base):
     active_incidents: Mapped[int] = mapped_column(Integer, nullable=False)
     critical_incidents: Mapped[int] = mapped_column(Integer, nullable=False)
     average_risk_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # Scores from different risk models are on different scales; the trend only
+    # plots the current model's. None: recorded before models were tracked.
+    model_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class SourceModel(Base):

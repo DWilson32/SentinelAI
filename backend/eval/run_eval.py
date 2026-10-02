@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from app.core.config import settings
-from app.ml.risk_model import risk_model
+from app.ml.risk_model import heuristic_risk_model, risk_model
 from app.schemas.risk import RiskPredictionRequest
 from app.services.credibility import SourceEvidence, assess, gate
 from app.services.embedding_service import embedding_service
@@ -33,6 +33,8 @@ from app.services.rag_service import rag_service
 
 HERE = Path(__file__).resolve().parent
 LEVELS = ["low", "medium", "high", "critical"]
+MODELS = {"trained": risk_model, "heuristic": heuristic_risk_model}
+model = risk_model
 
 
 def load(name: str) -> list[dict]:
@@ -43,7 +45,7 @@ def rate(row: dict) -> tuple[str, float]:
     """Severity and risk score as the live pipeline would give them."""
     best = max(
         (
-            risk_model.predict(
+            model.predict(
                 RiskPredictionRequest(title=s["title"], text=s["text"], category=row["category"], source_count=1)
             )
             for s in row["sources"]
@@ -68,7 +70,11 @@ def rate(row: dict) -> tuple[str, float]:
 
 
 def severity_report(rows: list[dict]) -> dict:
-    predictions = [(row, rate(row)[0]) for row in rows]
+    return severity_metrics(rows, [rate(row)[0] for row in rows])
+
+
+def severity_metrics(rows: list[dict], predicted: list[str]) -> dict:
+    predictions = list(zip(rows, predicted, strict=True))
     matrix = {truth: Counter() for truth in LEVELS}
     for row, predicted in predictions:
         matrix[row["label"]][predicted] += 1
@@ -222,12 +228,20 @@ def markdown(report: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--save", help="write eval/results/NAME.json and NAME.md")
+    parser.add_argument(
+        "--model",
+        choices=MODELS,
+        default="trained",
+        help="the trained model is scored on its own training set here; its unseen-data scores come from eval.train_risk",
+    )
     args = parser.parse_args()
+    global model
+    model = MODELS[args.model]
 
     rows, queries = load("incidents.jsonl"), load("queries.jsonl")
     report = {
         "name": args.save or "unsaved run",
-        "model": risk_model.model_name,
+        "model": model.model_name,
         "severity": severity_report(rows),
         "retrieval": retrieval_report(rows, queries),
     }

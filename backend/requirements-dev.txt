@@ -1,2 +1,4 @@
 -r requirements.txt
 pytest==8.3.4
+# Training only (eval/train_risk.py); production loads the learned weights from app/ml/risk_model_v3.json.
+scikit-learn==1.5.2

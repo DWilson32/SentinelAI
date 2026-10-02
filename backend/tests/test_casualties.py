@@ -2,7 +2,7 @@
 
 import pytest
 
-from eval.casualties import Casualties, from_headlines, read, severity
+from app.services.casualties import Casualties, from_headlines, read, severity
 
 
 @pytest.mark.parametrize(

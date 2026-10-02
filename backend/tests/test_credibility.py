@@ -195,8 +195,9 @@ def source(title, publisher, url, minutes=0, text="An emergency evacuation after
 
 
 def test_a_corroborating_report_lifts_the_cap(db):
+    # A toll the model rates high on its own, posted only to Facebook.
     rumour = source(
-        "Emergency evacuation as missile airstrike and shelling hit Kharkiv",
+        "Missile strike on Kharkiv kills 120 people",
         "facebook.com",
         "https://www.facebook.com/posts/1",
     )
@@ -206,7 +207,7 @@ def test_a_corroborating_report_lifts_the_cap(db):
     assert capped.severity_note.startswith("Capped at medium")
 
     wire = source(
-        "Emergency evacuation as missile airstrike and shelling hit Kharkiv - Reuters",
+        "Missile strike on Kharkiv kills 120 people - Reuters",
         "Reuters",
         "https://www.reuters.com/world/kharkiv-1",
         minutes=20,
