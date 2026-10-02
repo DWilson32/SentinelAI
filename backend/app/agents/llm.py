@@ -93,14 +93,18 @@ def usage_today(db) -> LlmUsageModel:
     return row
 
 
-def chat_completion(system_prompt: str, user_prompt: str) -> str | None:
-    """The model's answer, or None when there is none to be had."""
+def chat_completion(system_prompt: str, user_prompt: str, *, json_object: bool = False) -> str | None:
+    """The model's answer, or None when there is none to be had.
+
+    json_object asks for a JSON object instead of prose, for answers code reads.
+    """
     endpoint = _endpoint()
     if endpoint is None:
         return None
     api_key, base_url, model = endpoint
     meter = _meter.get()
-    key = hashlib.sha256(f"{model}\n{system_prompt}\n{user_prompt}".encode("utf-8")).hexdigest()
+    request = f"{model}\n{system_prompt}\n{user_prompt}" + ("\njson" if json_object else "")
+    key = hashlib.sha256(request.encode("utf-8")).hexdigest()
 
     with SessionLocal() as db:
         usage = usage_today(db)
@@ -135,6 +139,8 @@ def chat_completion(system_prompt: str, user_prompt: str) -> str | None:
             }
             if settings.llm_reasoning_effort and base_url:
                 options["reasoning_effort"] = settings.llm_reasoning_effort
+            if json_object:
+                options["response_format"] = {"type": "json_object"}
             response = client.chat.completions.create(**options)
         except Exception as exc:  # noqa: BLE001 - any failure means "use the template"
             logger.warning("Language model call failed; using template text: %s", exc)

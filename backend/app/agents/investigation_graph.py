@@ -1,3 +1,4 @@
+import json
 import operator
 from typing import Annotated, Any, TypedDict
 
@@ -6,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agents.llm import chat_completion, model_name
 from app.schemas.incident import IncidentDetail
 from app.services.credibility import verification_summary
+from app.services.playbook import recommended_actions as playbook_actions
 
 
 class AgentStep(TypedDict):
@@ -50,7 +52,11 @@ def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
     source_count = len(incident.get("sources") or [])
     llm_text = chat_completion(
-        "You are a crisis research analyst. Summarize collected evidence in 2-3 sentences." + GROUNDED,
+        # Attribution keeps it to what each report says: unattributed, "a Sudan official"
+        # became "a current government spokesperson".
+        "You are a crisis research analyst. Summarize collected evidence in 2-3 sentences, attributing "
+        "each claim to the outlet that reports it, in the reports' own words for who said what."
+        + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Category: {incident.get('category')}\n"
@@ -119,29 +125,63 @@ def _prediction_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     return {"steps": [{"agent_name": "Prediction Agent", "output": output}]}
 
 
+def _chosen(llm_text: str | None, playbook: list[str]) -> dict[str, str]:
+    """The playbook actions the model chose, in its order, each with its reason.
+
+    Read from JSON: as prose the model numbered its own ranking ("1. **3 - Monitor
+    ...**"), which reads the same as a choice of action 1. Numbers that are not in
+    the playbook are dropped, so nothing outside it can be recommended.
+    """
+    try:
+        answer = json.loads(llm_text[llm_text.index("{") : llm_text.rindex("}") + 1])
+        choices = list(answer["actions"])
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return {}
+    reasons: dict[str, str] = {}
+    for choice in choices:
+        try:
+            number = int(choice["number"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 1 <= number <= len(playbook):
+            reasons.setdefault(playbook[number - 1], str(choice.get("why") or "").strip())
+    return reasons
+
+
 def _strategy_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
-    actions = incident.get("recommended_actions") or []
+    # The actions come from the playbook; the model only orders them for this incident
+    # and says why. Asked to write its own, it proposed a "logistics hub near the
+    # Sudan-Libya border" from a headline warning of a "Libya-style partition".
+    playbook = playbook_actions(str(incident.get("category")), str(incident.get("severity")))
     prior = [step for step in state.get("steps", []) if step["agent_name"] == "Prediction Agent"]
     prediction = prior[-1]["output"] if prior else {}
+    numbered = "\n".join(f"{number}. {action}" for number, action in enumerate(playbook, start=1))
     llm_text = chat_completion(
-        "You are an emergency strategy planner. Return 3 short recommended actions as a bullet list, "
-        "based only on the situation described; do not assume facts that are not given." + GROUNDED,
+        "You are an emergency strategy planner. From the numbered playbook below, choose the actions "
+        "that apply to this incident, most urgent first, and say in one sentence why each applies. "
+        'Answer in JSON: {"actions": [{"number": <playbook number>, "why": "<one sentence>"}]}. '
+        "Do not suggest actions that are not in the playbook." + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Severity: {incident.get('severity')}\n"
             f"Risk: {prediction.get('risk_score')}\n"
-            f"Existing actions: {actions}"
+            f"Sources:\n{_sources_block(incident)}\n\n"
+            f"Playbook:\n{numbered}"
         ),
+        json_object=True,
     )
-    if llm_text:
-        parsed = [line.lstrip("-• ").strip() for line in llm_text.splitlines() if line.strip()]
-        recommended = parsed[:5] if parsed else actions
+    reasons = _chosen(llm_text, playbook)
+    if reasons:
+        finding = "\n".join(f"- {action} {reason}" for action, reason in reasons.items())
     else:
-        recommended = actions
+        # No usable choice: the playbook in its own order, as without a model.
+        llm_text = None
+        reasons = dict.fromkeys(playbook, "")
+        finding = "Strategy recommendations derived from incident playbook."
     output = {
-        "finding": llm_text or "Strategy recommendations derived from incident playbook.",
-        "recommended_actions": recommended,
+        "finding": finding,
+        "recommended_actions": list(reasons),
         "written_by": _author(llm_text),
     }
     return {"steps": [{"agent_name": "Strategy Agent", "output": output}]}

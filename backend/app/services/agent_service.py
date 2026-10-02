@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import AgentRunModel, IncidentModel, ReportModel
+from app.db.models import AgentRunModel, ReportModel
 from app.schemas.agent import AgentRun
 from app.agents.llm import metered
 from app.services.credibility import verification_summary
@@ -79,15 +79,9 @@ class AgentService:
                 )
             )
 
-        strategy_step = next((step for step in steps if step["agent_name"] == "Strategy Agent"), None)
-        if strategy_step:
-            incident_row = db.get(IncidentModel, incident_id)
-            if incident_row is not None:
-                actions = strategy_step["output"].get("recommended_actions")
-                if isinstance(actions, list) and actions:
-                    incident_row.recommended_actions = actions
-                    incident_row.updated_at = created_at
-
+        # The incident's recommended actions stay the playbook's (set with its evidence,
+        # credibility.apply_evidence); the Strategy Agent's ordering is kept with its
+        # run. Copying it back let one run's wording become the next run's input.
         db.flush()
         prune_history(db, incident_id)
         db.commit()

@@ -25,8 +25,11 @@ class FakeClient:
         if FakeClient.fail:
             raise RuntimeError("rate limited")
         FakeClient.calls.append(options)
+        content = f"answer {len(FakeClient.calls)}"
+        if options.get("response_format") == {"type": "json_object"}:
+            content = f'{{"actions": [{{"number": 1, "why": "{content}"}}]}}'
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=f"answer {len(FakeClient.calls)}"))],
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
             usage=SimpleNamespace(prompt_tokens=20, completion_tokens=10),
         )
 
@@ -112,3 +115,32 @@ def test_an_investigation_records_its_cost_and_who_wrote_each_step(model, db):
     assert runs[0].input["llm"]["calls"] == 5
     assert runs[0].input["llm"]["tokens"] == 150
     assert {run.output["written_by"] for run in runs} == {"openai/gpt-oss-120b"}
+
+
+def test_an_investigation_leaves_the_incidents_actions_to_the_playbook(model, db):
+    from datetime import datetime, timezone
+
+    from app.db.models import IncidentModel
+    from app.schemas.ingestion import IngestSource
+    from app.services.agent_service import agent_service
+    from app.services.ingestion_service import ingestion_service
+    from app.services.playbook import recommended_actions
+
+    source = IngestSource(
+        title="Sudan official rejects US ceasefire plan, warns of partition - Reuters",
+        url="https://news.example/sudan-ceasefire",
+        publisher="Reuters",
+        published_at=datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc),
+        raw_text="A Sudanese official rejected the US ceasefire plan.",
+        category="Conflict",
+        location="Global",
+    )
+    incident_id = ingestion_service._persist_sources(db, "public", [source]).incidents[0].incident_id
+    playbook = recommended_actions("Conflict", db.get(IncidentModel, incident_id).severity)
+
+    runs = agent_service.investigate(db, incident_id)
+    strategy = next(run for run in runs if run.agent_name == "Strategy Agent")
+
+    # The model chose one action for this run; the incident still lists them all.
+    assert strategy.output["recommended_actions"] == playbook[:1]
+    assert db.get(IncidentModel, incident_id).recommended_actions == playbook
