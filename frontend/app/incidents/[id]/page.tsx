@@ -51,6 +51,7 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
 
   const featureEntries = Object.entries(incident.risk_explanation.feature_importance).sort((a, b) => b[1] - a[1]);
   const investigations = byInvestigation(runs);
+  const copies = new Map((incident.evidence?.copies ?? []).map((copy) => [copy.source_id, copy]));
 
   return (
     <main className="min-h-screen bg-[#f4f7fb]">
@@ -95,14 +96,16 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                 </span>
               </p>
               <p className="mt-1 text-4xl font-bold text-ink">{incident.risk_score}</p>
-              {/* The API field is still named "confidence"; it is relabelled here because
-                  it measures how decisive the keyword signal is, not whether the rating is right. */}
-              <p
-                className="mt-2 text-sm text-muted"
-                title="How strongly the matched keywords push the score one way. Not a probability that the rating is correct."
-              >
-                Signal strength {(incident.risk_explanation.confidence * 100).toFixed(0)}%
-              </p>
+              {/* Replaces "signal strength", the model's keyword confidence, which measured
+                  how extreme a score was rather than how well the report is supported. */}
+              {incident.evidence && (
+                <p
+                  className="mt-2 text-sm text-muted"
+                  title="Independent sources combined. A reprint of another outlet's story, or a second article from the same newsroom, counts once."
+                >
+                  {`Credibility ${Math.round(incident.evidence.credibility * 100)}% · ${incident.evidence.independent_sources} independent source${incident.evidence.independent_sources === 1 ? "" : "s"}`}
+                </p>
+              )}
               {incident.severity_note && (
                 <p className="mt-2 max-w-64 text-xs leading-5 text-muted">{incident.severity_note}</p>
               )}
@@ -174,6 +177,11 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                   <div>
                     <p className="text-sm font-semibold text-ink">{source.title}</p>
                     <p className="mt-1 text-xs text-muted">{source.publisher} - credibility {(source.credibility_score * 100).toFixed(0)}%</p>
+                    {copies.get(source.id) && (
+                      <p className="mt-1 text-xs font-medium text-amber-700">
+                        {`Repeats ${copies.get(source.id)?.copy_of}'s report (${copies.get(source.id)?.reason}), so it does not count as independent`}
+                      </p>
+                    )}
                   </div>
                   <ExternalLink className="shrink-0 text-sea" size={16} aria-hidden="true" />
                 </div>

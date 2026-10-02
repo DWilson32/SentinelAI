@@ -111,9 +111,11 @@ export function IncidentList({ incidents }: { incidents: Incident[] }) {
                     {(incident.source_count ?? 1) > 1 && (
                       <span
                         className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-muted"
-                        title="Separate reports of the same event, grouped into one incident"
+                        title="Reports of the same event, grouped into one incident. Reprints and articles from the same newsroom are not independent."
                       >
-                        {incident.source_count} sources
+                        {incident.evidence && incident.evidence.independent_sources < (incident.source_count ?? 1)
+                          ? `${incident.source_count} sources · ${incident.evidence.independent_sources} independent`
+                          : `${incident.source_count} sources`}
                       </span>
                     )}
                   </div>

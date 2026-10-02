@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models import AgentRunModel, IncidentModel, ReportModel
 from app.schemas.agent import AgentRun
+from app.services.credibility import verification_summary
 from app.services.embedding_service import embedding_service
 from app.services.incident_service import incident_service
 from app.services.vector_store import vector_store
@@ -98,11 +99,9 @@ class AgentService:
             },
             {
                 "agent_name": "Verification Agent",
-                "output": {
-                    "finding": f"Source review completed across {source_count} document(s).",
-                    "credibility": incident.risk_explanation.confidence,
-                    "agreement": "high" if incident.risk_explanation.confidence >= 0.75 else "moderate",
-                },
+                "output": verification_summary(
+                    incident.evidence.model_dump() if incident.evidence else None, source_count
+                ),
             },
             {
                 "agent_name": "Prediction Agent",

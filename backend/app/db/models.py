@@ -24,6 +24,8 @@ class IncidentModel(Base):
     # Why severity is below what the risk score alone gives, when the evidence
     # caps it (services/credibility.py). None when it is not capped.
     severity_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Combined credibility, independent sources and detected copies (services/credibility.py).
+    evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     risk_score: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)

@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agents.llm import chat_completion
 from app.schemas.incident import IncidentDetail
+from app.services.credibility import verification_summary
 
 
 class AgentStep(TypedDict):
@@ -29,13 +30,6 @@ def _sources_block(incident: dict[str, Any]) -> str:
             f"credibility {source.get('credibility_score')}): {str(source.get('raw_text', ''))[:280]}"
         )
     return "\n".join(lines)
-
-
-def _average_credibility(incident: dict[str, Any]) -> float:
-    sources = incident.get("sources") or []
-    if not sources:
-        return 0.0
-    return round(sum(float(s.get("credibility_score", 0)) for s in sources) / len(sources), 2)
 
 
 def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
@@ -66,21 +60,18 @@ def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
 
 def _verification_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
-    credibility = _average_credibility(incident)
-    agreement = "high" if credibility >= 0.75 else "moderate" if credibility >= 0.55 else "low"
+    output = verification_summary(incident.get("evidence"), len(incident.get("sources") or []))
     llm_text = chat_completion(
-        "You are a source verification analyst. Assess agreement and credibility briefly.",
+        "You are a source verification analyst. Using the independence analysis given, "
+        "say briefly how well corroborated the report is.",
         (
             f"Incident: {incident.get('title')}\n"
-            f"Average credibility: {credibility}\n"
+            f"Independence analysis: {output['finding']}\n"
             f"Sources:\n{_sources_block(incident)}"
         ),
     )
-    output = {
-        "finding": llm_text or f"Source agreement is {agreement} across {len(incident.get('sources') or [])} document(s).",
-        "credibility": credibility,
-        "agreement": agreement,
-    }
+    if llm_text:
+        output["finding"] = llm_text
     return {"steps": [{"agent_name": "Verification Agent", "output": output}]}
 
 

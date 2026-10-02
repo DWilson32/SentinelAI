@@ -79,6 +79,7 @@ class IncidentService:
             source_count=source_count,
             geo_precision=incident.geo_precision,
             severity_note=incident.severity_note,
+            evidence=incident.evidence,
         )
 
     def _to_detail(self, incident: IncidentModel) -> IncidentDetail:

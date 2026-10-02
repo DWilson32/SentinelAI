@@ -53,11 +53,14 @@ def migrate_db_tables() -> None:
                 connection.execute(text("ALTER TABLE incidents ADD COLUMN geo_precision VARCHAR(16)"))
             if columns and "severity_note" not in columns:
                 connection.execute(text("ALTER TABLE incidents ADD COLUMN severity_note TEXT"))
+            if columns and "evidence" not in columns:
+                connection.execute(text("ALTER TABLE incidents ADD COLUMN evidence JSON"))
         return
 
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE incidents ADD COLUMN IF NOT EXISTS geo_precision VARCHAR(16)"))
         connection.execute(text("ALTER TABLE incidents ADD COLUMN IF NOT EXISTS severity_note TEXT"))
+        connection.execute(text("ALTER TABLE incidents ADD COLUMN IF NOT EXISTS evidence JSON"))
         connection.execute(text("ALTER TABLE sources ALTER COLUMN url TYPE TEXT"))
         connection.execute(text("ALTER TABLE sources ALTER COLUMN raw_text TYPE TEXT"))
         # HNSW rather than IVFFlat: it needs no training pass over existing rows,

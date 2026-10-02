@@ -73,8 +73,13 @@ class ReportService:
             f"**Category:** {incident.category}\n"
             f"**Severity:** {incident.severity}\n"
             f"**Risk Score:** {incident.risk_score:.0f}/100\n"
-            f"**Confidence:** {incident.risk_explanation.confidence:.0%}\n\n"
-            f"## Executive Brief\n\n"
+            + (
+                f"**Credibility:** {incident.evidence.credibility:.0%} from "
+                f"{incident.evidence.independent_sources} independent source(s)\n\n"
+                if incident.evidence
+                else "\n"
+            )
+            + f"## Executive Brief\n\n"
             f"{report.get('brief') or incident.summary}\n\n"
             f"## Research Assessment\n\n"
             f"{research.get('finding') or incident.summary}\n\n"

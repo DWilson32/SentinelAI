@@ -220,7 +220,7 @@ Pipeline: **Research → Verification → Prediction → Strategy → Report**
 
 ## Risk scoring (heuristic)
 
-The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v2`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure) and a category prior. The weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. The dashboard labels it "signal strength" for that reason. Training it needs a labelled evaluation set; see the roadmap.
+The ingestion pipeline scores each incident with `sentinel-heuristic-risk-v2`. It applies a logistic function to keyword densities (urgency, infrastructure, exposure) and a category prior. The weights are **hand-tuned, not learned**, so it is a heuristic rather than a trained model, and its `confidence` output is not a calibrated probability. That confidence measures how extreme a score is, not how well the report is supported, so the dashboard shows credibility from independent sources instead (below). Training the model needs a labelled evaluation set; see the roadmap.
 
 Source credibility is deliberately not part of the score. It measures how sure we are of a report, not how bad the event is: in v1 a trusted source raised the risk of minor events. The `source_credibility` request field is still accepted, but it is ignored.
 
@@ -236,13 +236,18 @@ Each source's credibility comes from its publisher, by type of organisation (`ba
 | Anything else | 0.55 |
 | User-generated platforms (Facebook, X, Telegram, ...) | 0.30 |
 
-Severity is then capped by the evidence behind it:
+More sources make an incident more credible, not more severe, but only when they are independent. The feeds carry headlines rather than article text, so independence is judged from headlines and publishers:
 
-- **Critical** needs an official or wire source, or two independent reports from recognised sources.
-- **High** needs one recognised source, or two independent reports.
-- Syndicated copies of one story count once.
+- **Reprints count once.** A source belongs to the outlet whose story it repeats, judged by headline overlap with numbers masked. On the live data every reprint overlapped 100% and every independent report 41% or less.
+- **One newsroom counts once.** Several articles from the same outlet are one source.
+- **Automated feeds count once.** GDACS builds quake alerts from the same seismic data as USGS.
+- **Social posts count once**, however many there are.
 
-A lone unverified report that the score would rate critical shows as medium, with the reason. A corroborating report lifts the cap.
+The independent sources then combine as separate chances the report is true: `1 − (1 − c₁)(1 − c₂)…`. Two unrecognised sites agreeing count about as much as one recognised newsroom.
+
+Severity is capped by that combined credibility: **critical** needs 90% and **high** needs 75%. A lone unverified report that the score would rate critical shows as medium, with the reason, and an independent corroborating report lifts the cap.
+
+The incident page shows the combined credibility and the number of independent sources, and labels each reprint with the outlet it repeats. The verification agent reports the same analysis.
 
 It returns:
 

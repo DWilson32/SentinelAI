@@ -46,14 +46,12 @@ from app.db.models import (
     SourceModel,
     TimelineEventModel,
 )
-from app.services.credibility import apply_evidence
+from app.services.credibility import STRUCTURED_HOSTS, apply_evidence, is_structured
 from app.services.headlines import normalized_title
 from app.services.lifecycle import as_utc
 from app.services.vector_store import vector_store
 
 logger = logging.getLogger(__name__)
-
-STRUCTURED_HOSTS = ("earthquake.usgs.gov", "gdacs.org")
 
 QUAKE_MAX_DISTANCE_KM = 100.0
 QUAKE_MAX_MAGNITUDE_GAP = 0.5
@@ -108,11 +106,6 @@ class MergeGroup:
     survivor_id: str
     # Incidents to fold into the survivor, each with why it matched.
     members: list[tuple[str, str]] = field(default_factory=list)
-
-
-def is_structured(url: str) -> bool:
-    host = (urlparse(url).hostname or "").lower()
-    return any(host == known or host.endswith("." + known) for known in STRUCTURED_HOSTS)
 
 
 def magnitude(title: str) -> float | None:

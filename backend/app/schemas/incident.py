@@ -17,6 +17,21 @@ class Source(BaseModel):
     raw_text: str
 
 
+class CopyNote(BaseModel):
+    source_id: str
+    publisher: str
+    copy_of: str
+    reason: str
+
+
+class Evidence(BaseModel):
+    # Combined across independent sources: reprints and same-newsroom articles count once.
+    credibility: float = Field(ge=0, le=1)
+    independent_sources: int
+    origins: list[str]
+    copies: list[CopyNote]
+
+
 class Incident(BaseModel):
     id: str
     title: str
@@ -40,6 +55,7 @@ class Incident(BaseModel):
     geo_precision: str | None = None
     # Set when the evidence caps severity below what the risk score gives.
     severity_note: str | None = None
+    evidence: Evidence | None = None
 
 
 class TimelineEvent(BaseModel):

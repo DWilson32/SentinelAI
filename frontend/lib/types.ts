@@ -20,6 +20,16 @@ export type Incident = {
   geo_precision?: string | null;
   // Set when the evidence caps severity below what the risk score alone gives.
   severity_note?: string | null;
+  evidence?: Evidence | null;
+};
+
+// Credibility combined across independent sources: reprints of another outlet's
+// story, and articles from the same newsroom, count once.
+export type Evidence = {
+  credibility: number;
+  independent_sources: number;
+  origins: string[];
+  copies: { source_id: string; publisher: string; copy_of: string; reason: string }[];
 };
 
 export type Source = {

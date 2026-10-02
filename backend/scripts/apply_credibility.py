@@ -3,7 +3,8 @@
 Sources stored before publisher credibility all carry their feed's 0.82. This
 sets each to its publisher's tier, re-scores every incident with the current
 risk model (the score itself is unchanged; its explanation no longer credits
-credibility), and caps severity where the evidence does not support it.
+credibility), works out which of its sources are independent and what they add
+up to, and caps severity where that evidence does not support it.
 Runs against DATABASE_URL.
 
 A dry run by default, read-only on Postgres; --apply writes the old values to
