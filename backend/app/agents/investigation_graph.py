@@ -32,6 +32,15 @@ def _sources_block(incident: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# The feeds carry headlines, not articles. Left to itself the model filled the
+# gaps from memory -- a live brief said a ceasefire plan would "freeze front-line
+# positions", which no source said -- so every step is held to its inputs.
+GROUNDED = (
+    " Use only the information given below. Do not add facts, figures, names or "
+    "claims that are not in it; where it is thin, say what is missing instead."
+)
+
+
 def _author(llm_text: str | None) -> str:
     """Who wrote a step's finding: the model, or the template it falls back to."""
     return (model_name() or "model") if llm_text else "template"
@@ -41,7 +50,7 @@ def _research_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
     source_count = len(incident.get("sources") or [])
     llm_text = chat_completion(
-        "You are a crisis research analyst. Summarize collected evidence in 2-3 sentences.",
+        "You are a crisis research analyst. Summarize collected evidence in 2-3 sentences." + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Category: {incident.get('category')}\n"
@@ -69,7 +78,7 @@ def _verification_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     output = verification_summary(incident.get("evidence"), len(incident.get("sources") or []))
     llm_text = chat_completion(
         "You are a source verification analyst. Using the independence analysis given, "
-        "say briefly how well corroborated the report is.",
+        "say briefly how well corroborated the report is." + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Independence analysis: {output['finding']}\n"
@@ -86,7 +95,7 @@ def _prediction_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     incident = state["incident"]
     risk = incident.get("risk_explanation") or {}
     llm_text = chat_completion(
-        "You are a crisis risk forecaster. Explain the risk outlook in 2 sentences using only provided data.",
+        "You are a crisis risk forecaster. Explain the risk outlook in 2 sentences." + GROUNDED,
         (
             f"Title: {incident.get('title')}\n"
             f"Severity: {incident.get('severity')}\n"
@@ -116,7 +125,8 @@ def _strategy_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     prior = [step for step in state.get("steps", []) if step["agent_name"] == "Prediction Agent"]
     prediction = prior[-1]["output"] if prior else {}
     llm_text = chat_completion(
-        "You are an emergency strategy planner. Return 3 short recommended actions as a bullet list.",
+        "You are an emergency strategy planner. Return 3 short recommended actions as a bullet list, "
+        "based only on the situation described; do not assume facts that are not given." + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Severity: {incident.get('severity')}\n"
@@ -142,7 +152,8 @@ def _report_node(state: InvestigationState) -> dict[str, list[AgentStep]]:
     prior_outputs = {step["agent_name"]: step["output"] for step in state.get("steps", [])}
     strategy = prior_outputs.get("Strategy Agent", {})
     llm_text = chat_completion(
-        "You are an intelligence briefer. Write a concise executive brief (max 120 words).",
+        "You are an intelligence briefer. Write a concise executive brief (max 120 words) "
+        "in which every statement comes from the inputs." + GROUNDED,
         (
             f"Incident: {incident.get('title')}\n"
             f"Location: {incident.get('location')}\n"
