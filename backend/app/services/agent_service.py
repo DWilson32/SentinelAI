@@ -59,11 +59,12 @@ class AgentService:
                 incident_id=incident_id,
                 agent_name=step["agent_name"],
                 status="completed",
-                input=run_input,
+                # "step" orders runs that share a timestamp; the graph can loop back.
+                input={**run_input, "step": index},
                 output=step["output"],
                 created_at=created_at,
             )
-            for step in steps
+            for index, step in enumerate(steps, start=1)
         ]
         db.add_all(models)
 
@@ -141,6 +142,7 @@ class AgentService:
         runs = db.scalars(
             select(AgentRunModel).where(AgentRunModel.incident_id == incident_id).order_by(AgentRunModel.created_at)
         ).all()
+        runs = sorted(runs, key=lambda run: (run.created_at, (run.input or {}).get("step", 0)))
         return [self._to_schema(run) for run in runs]
 
     def _build_rag_context(self, db: Session, incident) -> str:

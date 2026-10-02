@@ -55,6 +55,33 @@ def from_headlines(headlines: list[str]) -> Casualties:
     return Casualties(0, injuries, injured_headline)
 
 
+def toll_history(sources: list[dict]) -> dict | None:
+    """How the death toll moved across an incident's reports, when they differ.
+
+    Reports that give no toll are left out. "rising" when no report gives fewer
+    deaths than an earlier one, as while a toll is still being counted;
+    "conflicting" when one does, which is a correction or a different event. None
+    when the reports agree, or give no toll.
+    """
+    reports = sorted(
+        (
+            {
+                "deaths": read(str(source.get("title")))[0],
+                "publisher": source.get("publisher"),
+                "published_at": str(source.get("published_at")),
+                "title": source.get("title"),
+            }
+            for source in sources
+        ),
+        key=lambda report: report["published_at"],
+    )
+    reports = [report for report in reports if report["deaths"]]
+    if len({report["deaths"] for report in reports}) < 2:
+        return None
+    rising = all(earlier["deaths"] <= later["deaths"] for earlier, later in zip(reports, reports[1:]))
+    return {"status": "rising" if rising else "conflicting", "reports": reports}
+
+
 def severity(casualties: Casualties) -> str:
     """The rubric's scale, as PAGER's orders of magnitude of deaths."""
     if casualties.deaths >= 1000:

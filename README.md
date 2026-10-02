@@ -1,17 +1,18 @@
 # SentinelAI
 
-Autonomous crisis intelligence platform MVP.
+Crisis intelligence platform MVP.
 
 SentinelAI monitors crisis incidents, runs multi-agent investigation workflows, scores risk, and presents live intelligence in a full-stack dashboard. The app runs locally with seeded data, optional live news ingest, **semantic RAG chat**, and a **LangGraph** investigation pipeline.
 
 ## Stack
 
 - **Frontend:** Next.js, TypeScript, Tailwind CSS, Recharts
-- **Backend:** FastAPI, Pydantic, SQLAlchemy (SQLite by default)
+- **Backend:** FastAPI, Pydantic, SQLAlchemy (SQLite by default; Postgres in production)
 - **RAG:** pgvector in Postgres, FastEmbed (`BAAI/bge-small-en-v1.5`, 384-dim)
-- **Agents:** LangGraph (research → verification → prediction → strategy → report)
-- **Optional:** OpenAI for chat answers and agent steps; GNews / NewsAPI for ingest
-- **Planned:** PostgreSQL, Celery, Redis, scikit-learn risk model
+- **Agents:** LangGraph (research → verification → prediction → strategy → report, with verification sending research back when the reported death tolls differ)
+- **Risk model:** logistic regression trained with scikit-learn; production loads only its weights
+- **Optional:** a language model for chat answers and agent steps (open-weight `gpt-oss-120b` on Groq's free plan by default); GNews / NewsAPI for ingest
+- **Planned:** Celery, Redis
 
 ## Project Structure
 
@@ -231,11 +232,20 @@ Click **Investigate** on an incident, or:
 curl -X POST http://127.0.0.1:8000/api/agents/investigate/inc-001
 ```
 
-Pipeline: **Research → Verification → Prediction → Strategy → Report**
+Pipeline: **Research → Verification → Prediction → Strategy → Report**, with one decision:
 
-- Uses the incident's own sources, plus semantically similar *other* incidents as context
-- With a language model configured, each step is written by the model; otherwise by a template grounded in the incident's data. Each step says which.
-- Keeps every investigation (the latest 20 per incident), each with the model calls and tokens it used
+```
+Research ──► Verification ──► Prediction ──► Strategy ──► Report
+   ▲              │
+   └──────────────┘  once, when the reports give different death tolls
+```
+
+- **The decision.** Verification reads the death toll from every report, oldest first. Where the reports differ, it sends the investigation back to research once, to ask whether they describe one event whose toll changed or different events. A second verification checks that answer against the reports and records `same_event` and `current_toll`. The toll can only be a figure some report gave. On live data it settles the Myanmar airstrike (33 → 49 → 50, one event, 50). It also flags a Gaza pair as two attacks on consecutive days that had been merged as one incident.
+- **Grounded.** Every step is told to use only its inputs and to say what is missing. Research attributes each claim to the outlet that reported it.
+- **Playbook actions.** Strategy chooses and orders the playbook's actions (`backend/app/services/playbook.py`) and gives a reason for each. It cannot add actions of its own, and an investigation never changes the incident's recommended actions.
+- **Context.** Uses the incident's own sources, plus semantically similar *other* incidents.
+- **Authorship.** With a language model configured, each step is written by the model; otherwise by a template grounded in the incident's data. Each step says which.
+- **History.** Keeps every investigation (the latest 20 per incident), each with the model calls and tokens it used.
 
 ### The language model, on a free plan
 
@@ -250,7 +260,7 @@ It can never cost money:
 - **Cache.** A prompt seen before is answered from storage, so re-running an unchanged investigation spends nothing.
 - **Fallback.** Any failure, such as a rate limit, also falls back to the template instead of an error.
 
-An investigation is five model calls, a few thousand tokens.
+An investigation is five model calls, or seven when the reports disagree on the toll: about 3,000–5,000 tokens.
 
 The gateway (`backend/app/agents/llm.py`) speaks the OpenAI-compatible API. Any other endpoint works by setting `LLM_BASE_URL` and `LLM_MODEL`, including a self-hosted open model on Ollama, llama.cpp or vLLM, with no code change.
 

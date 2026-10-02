@@ -13,7 +13,7 @@ from app.db.database import engine
 
 app = FastAPI(
     title="SentinelAI API",
-    description="Autonomous crisis intelligence platform API.",
+    description="Crisis intelligence platform API.",
     version="0.1.0",
 )
 

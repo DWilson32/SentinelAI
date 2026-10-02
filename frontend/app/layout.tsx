@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SentinelAI",
-  description: "Autonomous crisis intelligence platform",
+  description: "Crisis intelligence platform",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -35,6 +35,10 @@ function InvestigationRuns({ number, runs }: { number: number; runs: AgentRun[] 
         <article key={run.id} className="rounded-md border border-line p-3">
           <p className="text-sm font-semibold text-ink">
             {run.agent_name}
+            {/* Sent back by verification because the reports disagree on the toll. */}
+            {run.output.pass === 2 && (
+              <span className="ml-2 text-xs font-medium text-amber-700">second pass: the reported tolls differ</span>
+            )}
             {typeof run.output.written_by === "string" && (
               <span className="ml-2 text-xs font-normal text-muted">
                 {run.output.written_by === "template" ? "template" : `written by ${run.output.written_by}`}

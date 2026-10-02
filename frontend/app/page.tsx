@@ -21,7 +21,7 @@ export default async function Home() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-normal text-sea">SentinelAI</p>
-            <h1 className="mt-1 text-2xl font-bold text-ink md:text-3xl">Autonomous Crisis Intelligence</h1>
+            <h1 className="mt-1 text-2xl font-bold text-ink md:text-3xl">Crisis Intelligence</h1>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <FeedStatusPill status={feedStatus} />
