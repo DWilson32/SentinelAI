@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db.models import IncidentModel, SourceModel, TimelineEventModel
@@ -57,7 +58,7 @@ class _Prepared:
 
 class IngestionService:
     async def ingest_manual(self, db: Session, request: IngestRequest) -> IngestResponse:
-        return self._persist_sources(db, "manual", request.sources)
+        return await self._persist(db, "manual", request.sources)
 
     async def ingest_mock(self, db: Session) -> IngestResponse:
         now = datetime.now(timezone.utc)
@@ -87,24 +88,24 @@ class IngestionService:
                 location="United States",
             ),
         ]
-        return self._persist_sources(db, "mock", sources)
+        return await self._persist(db, "mock", sources)
 
     async def ingest_external(self, db: Session, request: ExternalIngestRequest) -> IngestResponse:
         if request.provider == "gnews":
             sources = await self._fetch_gnews(request.query, request.max_results)
         else:
             sources = await self._fetch_newsapi(request.query, request.max_results)
-        return self._persist_sources(db, request.provider, sources)
+        return await self._persist(db, request.provider, sources)
 
     async def ingest_public_feeds(self, db: Session, max_results: int = 18) -> IngestResponse:
-        skip_gdelt = feed_status_service.circuit_open(db, GDELT_FEED, GDELT_COOLDOWN)
+        skip_gdelt = await run_in_threadpool(feed_status_service.circuit_open, db, GDELT_FEED, GDELT_COOLDOWN)
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             outcomes = await self._fetch_public_sources(client, max_results, skip_gdelt=skip_gdelt)
-        feed_status_service.record(db, outcomes)
+        await run_in_threadpool(feed_status_service.record, db, outcomes)
         # Only listed feeds contribute items. The GDELT tracking outcome carries the
         # same items as conflict_news when it succeeds, and must not double them.
         sources = [item for outcome in outcomes if outcome.feed in FEEDS for item in outcome.items]
-        return self._persist_sources(db, "public", sources[:max_results])
+        return await self._persist(db, "public", sources[:max_results])
 
     async def _fetch_public_sources(
         self, client: httpx.AsyncClient, max_results: int, *, skip_gdelt: bool = False
@@ -133,6 +134,16 @@ class IngestionService:
                 await run("reliefweb", lambda: self._fetch_reliefweb_reports(client, max_results=max(2, max_results // 6)))
             )
         return outcomes
+
+    async def _persist(self, db: Session, provider: str, sources: list[IngestSource]) -> IngestResponse:
+        """_persist_sources, on a worker thread.
+
+        Storing a batch scores, geocodes and embeds every report, which on the
+        free server's 0.1 CPU took over a minute. On the event loop it held up
+        every other request, /health included, so Render's 5-second check timed
+        out and restarted the server mid-sync (2 Oct, at 06:03 and 18:38).
+        """
+        return await run_in_threadpool(self._persist_sources, db, provider, sources)
 
     def _persist_sources(self, db: Session, provider: str, sources: list[IngestSource]) -> IngestResponse:
         incidents: list[IngestedIncident] = []
