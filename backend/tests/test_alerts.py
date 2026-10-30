@@ -71,7 +71,10 @@ def test_an_incident_at_the_threshold_raises_one_alert(db):
 
     assert len(raised) == 1
     assert raised[0].severity == "medium"
-    assert "2 independent sources" in raised[0].reason
+    assert raised[0].reason == (
+        "Conflict in Rakhine, Myanmar rated medium at risk 46.9, "
+        "on 2 independent sources at 97% credibility."
+    )
     assert raised[0].delivered_at is None
 
 
@@ -217,3 +220,16 @@ def test_an_incident_no_longer_being_reported_does_not_alert(db):
 
     assert alert_service.pending(db, ["inc-stale"]) == []
     assert alert_service.raise_for(db, ["inc-stale"]) == []
+
+
+def test_an_unlocated_incident_does_not_claim_a_place(db):
+    # News that could not be geocoded is stored at "Global".
+    incident_id = add(db, "inc-nowhere", "critical", 98.6, sources=1, credibility=0.95)
+    db.get(IncidentModel, incident_id).location = "Global"
+    db.commit()
+
+    raised = alert_service.raise_for(db, [incident_id])
+
+    assert raised[0].reason == (
+        "Conflict rated critical at risk 98.6, on 1 independent source at 95% credibility."
+    )

@@ -106,16 +106,25 @@ class AlertService:
     def _build(self, db: Session, incident: IncidentModel, *, escalated: bool) -> AlertModel:
         evidence = incident.evidence or {}
         sources = evidence.get("independent_sources")
+        credibility = evidence.get("credibility")
         corroboration = (
             f"{sources} independent source{'' if sources == 1 else 's'}" if sources else "a single report"
         )
+        # Why one source can carry a critical rating: an official agency scores 0.95,
+        # and the severity gate asks for 0.90. Without the figure the alert reads as
+        # though it rests on nothing.
+        if credibility:
+            corroboration += f" at {round(credibility * 100)}% credibility"
+        # News that could not be geocoded is stored at "Global", which reads as a
+        # place in a sentence. Say nothing rather than something false.
+        place = "" if incident.location in ("Global", "Unknown") else f" in {incident.location}"
         verb = "escalated to" if escalated else "rated"
         alert = AlertModel(
             id=f"alt-{uuid4().hex[:12]}",
             incident_id=incident.id,
             severity=incident.severity,
             reason=(
-                f"{incident.category} in {incident.location} {verb} {incident.severity} "
+                f"{incident.category}{place} {verb} {incident.severity} "
                 f"at risk {incident.risk_score:g}, on {corroboration}."
             ),
             risk_score=incident.risk_score,
