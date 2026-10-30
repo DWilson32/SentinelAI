@@ -93,7 +93,25 @@ Open **http://localhost:3000** (API: **http://127.0.0.1:8000**).
 docker compose up
 ```
 
-Starts Postgres with pgvector, the backend, and the frontend.
+Starts Postgres with pgvector, the backend and the frontend. The backend runs the same image `backend/Dockerfile` builds for deployment, so a local run and a deployed one share one dependency set and one embedding model.
+
+The Dockerfile has four stages:
+
+| Stage | Contents |
+|---|---|
+| `deps` | the dependency set, installed once into a virtualenv |
+| `test` | `deps` + dev dependencies + the suite; **`pytest` runs during the build**, so a failing test fails the image |
+| `build` | `deps` + the embedding model, baked in rather than downloaded on first use |
+| `runtime` | the final image: no pip, no tests, no build context, and not root |
+
+```bash
+docker build --target test backend     # build the image only if the tests pass
+docker build --target runtime backend  # what would be deployed
+```
+
+CI builds both stages on every push and checks that the runtime image serves `/health`.
+
+**Production does not currently run this image.** The backend is deployed on Render's native Python runtime (`render.yaml`), because changing an existing free-tier service's runtime means standing up a new service on a new URL, and that migration wasn't worth the risk while the app was live. The image is what makes moving host — or outgrowing the free tier — a configuration change rather than a rewrite.
 
 ## API Endpoints
 

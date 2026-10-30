@@ -26,6 +26,30 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest tests -q
 
+  image:
+    name: Backend image builds and passes its tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The test stage runs pytest inside the image, so a failing test fails the
+      # build: the deployable artifact cannot be produced without a green suite.
+      - run: docker build --target test backend
+      # The runtime stage is what would be deployed. Building it here proves the
+      # model prefetch and the final image still work.
+      - run: docker build --target runtime -t sentinel-api backend
+      - name: The image serves /health
+        run: |
+          # In-memory SQLite: /health only needs a reachable database, and the
+          # image's working directory is root-owned, so nothing can write a file there.
+          docker run -d --name api -p 8000:8000 -e DATABASE_URL=sqlite:// sentinel-api
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "no healthy response" >&2
+          docker logs api >&2
+          exit 1
+
   frontend:
     name: Frontend type check and build
     runs-on: ubuntu-latest

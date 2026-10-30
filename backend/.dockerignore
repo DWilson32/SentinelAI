@@ -1,0 +1,21 @@
+# The build needs requirements*.txt, app/, scripts/ and tests/. Everything else
+# only enlarges the context or would bake local state into the image.
+.venv/
+.model_cache/
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Local databases, logs and secrets.
+*.db
+*.log
+.env
+.env.*
+
+# Local storage from the pre-pgvector Qdrant setup.
+qdrant_data/
+
+# The evaluation set and its runners are development only, and nothing under
+# tests/ imports them.
+eval/
