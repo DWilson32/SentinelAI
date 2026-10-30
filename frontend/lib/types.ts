@@ -139,3 +139,28 @@ export type FeedsOverview = {
     consecutive_failures: number;
   }[];
 };
+
+// An incident that crossed the alerting threshold. Delivery is recorded
+// separately: an alert nobody could be told about is still shown, with its error.
+export type Alert = {
+  id: string;
+  incident_id: string;
+  incident_title: string;
+  incident_location: string;
+  severity: Severity;
+  reason: string;
+  risk_score: number;
+  credibility?: number | null;
+  independent_sources?: number | null;
+  created_at: string;
+  acknowledged_at?: string | null;
+  delivered_at?: string | null;
+  delivery_error?: string | null;
+};
+
+export type AlertsOverview = {
+  unacknowledged: number;
+  total: number;
+  delivery_configured: boolean;
+  alerts: Alert[];
+};

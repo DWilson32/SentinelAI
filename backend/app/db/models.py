@@ -201,3 +201,33 @@ class LlmCacheModel(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AlertModel(Base):
+    """An incident that crossed the alerting threshold and should reach a person.
+
+    Raised once per incident per severity band, so an incident that escalates
+    alerts again and one that is re-reported does not. Delivery is recorded
+    separately from the alert itself: an alert that nobody could be told about is
+    still an alert, and the dashboard shows it either way.
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    incident_id: Mapped[str] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    severity: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    # What crossed the threshold, in the words the dashboard shows.
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    risk_score: Mapped[float] = mapped_column(Float, nullable=False)
+    credibility: Mapped[float | None] = mapped_column(Float, nullable=True)
+    independent_sources: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # Set when an analyst has seen it; unacknowledged alerts are what the dashboard leads with.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    incident: Mapped[IncidentModel] = relationship()

@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.security import require_admin_key
 from app.db.database import get_db
 from app.schemas.agent import AgentRun
+from app.schemas.alert import Alert, AlertsOverview
 from app.schemas.analytics import AnalyticsOverview
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.feeds import FeedsOverview
@@ -14,6 +15,7 @@ from app.schemas.incident import Incident, IncidentDetail
 from app.schemas.report import Report, ReportCreateResponse
 from app.schemas.risk import RiskPrediction, RiskPredictionRequest
 from app.services.agent_service import agent_service
+from app.services.alert_service import alert_service
 from app.services.analytics_service import analytics_service
 from app.services.feed_status_service import feed_status_service
 from app.services.ingestion_service import ingestion_service
@@ -149,6 +151,20 @@ def generate_report(incident_id: str, db: Session = Depends(get_db)) -> ReportCr
 @router.get("/analytics/overview", response_model=AnalyticsOverview)
 def analytics_overview(db: Session = Depends(get_db)) -> AnalyticsOverview:
     return analytics_service.get_overview(db)
+
+
+@router.get("/alerts", response_model=AlertsOverview)
+def list_alerts(unacknowledged_only: bool = False, limit: int = 50, db: Session = Depends(get_db)) -> AlertsOverview:
+    """Alerts raised by the monitor, newest first, with whether each was delivered."""
+    return alert_service.overview(db, limit=min(limit, 200), unacknowledged_only=unacknowledged_only)
+
+
+@router.post("/alerts/{alert_id}/acknowledge", response_model=Alert, dependencies=admin_only)
+def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)) -> Alert:
+    alert = alert_service.acknowledge(db, alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return alert
 
 
 @router.get("/feeds/status", response_model=FeedsOverview)

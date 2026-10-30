@@ -1,4 +1,5 @@
 import { AlertTriangle, Gauge, RadioTower } from "lucide-react";
+import { AlertPanel } from "@/components/AlertPanel";
 import { ChatPanel } from "@/components/ChatPanel";
 import { CrisisMap } from "@/components/CrisisMap";
 import { DashboardCharts } from "@/components/DashboardCharts";
@@ -6,13 +7,14 @@ import { IncidentList } from "@/components/IncidentList";
 import { MetricCard } from "@/components/MetricCard";
 import { RealDataSync } from "@/components/RealDataSync";
 import { FeedStatusPill } from "@/components/FeedStatusPill";
-import { getAnalytics, getFeedStatus, getIncidents } from "@/lib/api";
+import { getAlerts, getAnalytics, getFeedStatus, getIncidents } from "@/lib/api";
 
 export default async function Home() {
-  const [incidents, analytics, feedStatus] = await Promise.all([
+  const [incidents, analytics, feedStatus, alerts] = await Promise.all([
     getIncidents(),
     getAnalytics(),
     getFeedStatus(),
+    getAlerts(),
   ]);
 
   return (
@@ -38,10 +40,18 @@ export default async function Home() {
             detail={`Reported in the last 72h (floods: 7 days) · ${analytics.tracked_incidents ?? analytics.active_incidents} tracked`}
             icon={RadioTower}
           />
-          <MetricCard label="Critical Alerts" value={analytics.critical_incidents} detail="Require immediate investigation" icon={AlertTriangle} />
+          {/* Was "Critical Alerts" while counting critical incidents, of which there
+              have never been any. Now that alerts exist, it counts the real thing. */}
+          <MetricCard
+            label="Open Alerts"
+            value={alerts.unacknowledged}
+            detail={`${alerts.total} raised in total · medium and above, on corroborated evidence`}
+            icon={AlertTriangle}
+          />
           <MetricCard label="Average Risk" value={analytics.average_risk_score} detail="Composite score across live incidents" icon={Gauge} />
         </section>
 
+        <AlertPanel initial={alerts} />
         <CrisisMap incidents={incidents} />
         <DashboardCharts analytics={analytics} />
         <ChatPanel />

@@ -83,6 +83,29 @@ class Settings(BaseSettings):
     vector_rag_enabled: bool = True
     index_ingested_sources: bool = True
 
+    # After a sync, incidents at or above this severity that have never been
+    # investigated are investigated without being asked. A monitoring tool that
+    # waits for someone to click Investigate on each incident does not scale, and
+    # the ones worth reading are exactly the ones nobody has opened. Capped per
+    # sync because each investigation costs model calls: at roughly 4,000 tokens
+    # the daily budget is about 37 of them.
+    auto_investigate: bool = True
+    auto_investigate_min_severity: str = "medium"
+    auto_investigate_max_per_sync: int = 3
+
+    # Alerting. Medium is the floor because the severity bands come from death
+    # tolls: medium means a report of 1-99 deaths, which warrants a person
+    # looking. An alert is raised once per incident per band, so escalation
+    # alerts again and re-reporting does not.
+    alerts_enabled: bool = True
+    alert_min_severity: str = "medium"
+    alert_max_per_sync: int = 10
+    # Where a raised alert is sent. Any endpoint that accepts a JSON POST: a chat
+    # webhook, an automation, another service. Unset means alerts are still
+    # raised and shown, just not delivered anywhere.
+    alert_webhook_url: str | None = None
+    alert_webhook_timeout_seconds: float = 10.0
+
     # extra="ignore": older .env files still carry QDRANT_* keys from before the
     # pgvector migration; with the default "forbid" those would crash startup.
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

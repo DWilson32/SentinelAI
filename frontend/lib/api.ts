@@ -1,4 +1,4 @@
-import type { AgentRun, AnalyticsOverview, ChatResponse, FeedsOverview, Incident, IncidentDetail, IngestResponse, Report, ReportCreateResponse } from "@/lib/types";
+import type { AgentRun, AlertsOverview, AnalyticsOverview, ChatResponse, FeedsOverview, Incident, IncidentDetail, IngestResponse, Report, ReportCreateResponse } from "@/lib/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api";
 
@@ -17,6 +17,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export function getAlerts(limit = 20) {
+  return request<AlertsOverview>(`/alerts?limit=${limit}`);
 }
 
 export function getIncidents() {

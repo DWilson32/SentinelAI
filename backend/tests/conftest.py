@@ -15,6 +15,21 @@ from app.db import models  # noqa: E402, F401 - registers the tables
 from app.db.database import Base  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _unprompted_work_off(monkeypatch):
+    """Tests opt in to the work a sync does on its own.
+
+    Otherwise every test that ingests a report would also start investigations
+    and raise alerts, which changes investigation numbering and spends the
+    model budget in tests about something else. test_auto_investigate.py and
+    test_alerts.py switch them back on.
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "auto_investigate", False)
+    monkeypatch.setattr(settings, "alerts_enabled", False)
+
+
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)

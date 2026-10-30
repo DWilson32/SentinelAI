@@ -131,6 +131,8 @@ CI builds both stages on every push and checks that the runtime image serves `/h
 | GET | `/api/agents/runs/{id}` | Agent run history |
 | GET | `/api/reports/{id}` | List generated incident reports |
 | POST | `/api/reports/{id}` | Generate executive Markdown report |
+| GET | `/api/alerts` | Alerts raised, newest first, with delivery state |
+| POST | `/api/alerts/{id}/acknowledge` | Mark an alert as seen |
 | GET | `/api/analytics/overview` | Dashboard metrics |
 
 ## Ingestion
@@ -290,6 +292,33 @@ It can never cost money:
 An investigation is five model calls, or seven when the reports disagree on the toll: about 3,000–5,000 tokens.
 
 The gateway (`backend/app/agents/llm.py`) speaks the OpenAI-compatible API. Any other endpoint works by setting `LLM_BASE_URL` and `LLM_MODEL`, including a self-hosted open model on Ollama, llama.cpp or vLLM, with no code change.
+
+## Acting on its own
+
+A sync does three things, in order: store the reports, investigate what warrants it, alert on what crossed a threshold. The second and third used to be a person's job, which meant they happened only when someone had the dashboard open.
+
+### Unprompted investigation
+
+After a sync, incidents at or above `AUTO_INVESTIGATE_MIN_SEVERITY` (medium) that have **never** been investigated are investigated, worst risk score first, at most `AUTO_INVESTIGATE_MAX_PER_SYNC` (3) per sync. The cap exists because each investigation spends model calls: at roughly 4,000 tokens, the daily budget is about 37 of them.
+
+Already-investigated incidents are skipped, so re-reporting the same story does not re-run the agents. One failure is logged and the rest continue.
+
+### Alerts
+
+An alert is raised when an incident is at or above `ALERT_MIN_SEVERITY` (medium), **once per incident per severity band**. The band rather than the event is the unit: an incident escalating from medium to high alerts again, because that is new information, while the same incident being re-reported at the same severity does not. Medium is the floor because the severity bands come from death tolls — medium means a report of 1-99 deaths. Severity already passes the credibility gate, so an alert cannot be raised on a single unverified report.
+
+Delivery is a POST of the alert as JSON to `ALERT_WEBHOOK_URL` — a chat webhook, an automation, another service. The payload carries `text` and `content` for chat endpoints plus the structured alert and incident.
+
+**Delivery is recorded on the alert, not required by it.** An alert that could not be sent is still raised, still shown, and carries its delivery error, because a silent delivery failure is what makes an alerting system worse than none. With no webhook configured, alerts are raised and displayed and nothing is sent.
+
+The dashboard leads with unacknowledged alerts and each can be acknowledged, which writes through the same server-side proxy as the sync button so the admin key never reaches the browser.
+
+```bash
+ALERT_WEBHOOK_URL=https://example.com/hooks/sentinel
+ALERT_MIN_SEVERITY=medium
+AUTO_INVESTIGATE_MIN_SEVERITY=medium
+AUTO_INVESTIGATE_MAX_PER_SYNC=3
+```
 
 ## Risk scoring (trained)
 

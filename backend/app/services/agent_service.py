@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import AgentRunModel, ReportModel
+from app.db.models import AgentRunModel, IncidentModel, ReportModel
 from app.schemas.agent import AgentRun
 from app.agents.llm import metered
 from app.services.credibility import verification_summary
@@ -137,6 +137,54 @@ class AgentService:
                 },
             },
         ]
+
+    def investigate_priorities(self, db: Session, incident_ids: list[str]) -> list[str]:
+        """Investigate the incidents among these that warrant it, unprompted.
+
+        Which ones: at or above the configured severity, and never investigated
+        before, worst risk score first. A monitoring tool whose investigations
+        all start with a human click leaves the serious incidents unopened
+        exactly when nobody is watching, which is most of the night.
+
+        Capped per sync, because each investigation spends model calls. Returns
+        the incident ids investigated.
+        """
+        from app.services.credibility import SEVERITY_ORDER
+
+        if not settings.auto_investigate or not incident_ids:
+            return []
+        try:
+            floor = SEVERITY_ORDER.index(settings.auto_investigate_min_severity)
+        except ValueError:
+            return []
+
+        rows = db.execute(
+            select(IncidentModel.id, IncidentModel.severity, IncidentModel.risk_score)
+            .where(IncidentModel.id.in_(incident_ids))
+            .order_by(IncidentModel.risk_score.desc())
+        ).all()
+        already = set(
+            db.scalars(
+                select(AgentRunModel.incident_id).where(AgentRunModel.incident_id.in_(incident_ids))
+            ).all()
+        )
+
+        investigated: list[str] = []
+        for row in rows:
+            if len(investigated) >= settings.auto_investigate_max_per_sync:
+                break
+            if row.id in already or row.severity not in SEVERITY_ORDER[floor:]:
+                continue
+            try:
+                self.investigate(db, row.id)
+            except Exception as exc:  # noqa: BLE001 - one failure must not stop the rest
+                logger.warning("Auto-investigation of %s failed: %s", row.id, exc)
+                db.rollback()
+                continue
+            investigated.append(row.id)
+        if investigated:
+            logger.info("Investigated %d incident(s) without being asked", len(investigated))
+        return investigated
 
     def list_runs(self, db: Session, incident_id: str) -> list[AgentRun]:
         runs = db.scalars(

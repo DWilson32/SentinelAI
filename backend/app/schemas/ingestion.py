@@ -47,5 +47,9 @@ class IngestResponse(BaseModel):
     # Reports added as further sources of an existing incident (entity resolution).
     matched_count: int = 0
     skipped_count: int
+    # What the sync did on its own: investigations started, alerts raised, alerts delivered.
+    investigated_count: int = 0
+    alerted_count: int = 0
+    delivered_count: int = 0
     incidents: list[IngestedIncident]
     message: str
