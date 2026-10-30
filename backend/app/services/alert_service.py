@@ -4,8 +4,8 @@ Until now the system detected and displayed: an incident could be rated high,
 corroborated by three independent sources, and sit on a dashboard nobody had
 open. Detection without delivery is not monitoring.
 
-An alert is raised when an incident is at or above `alert_min_severity`, once per
-incident per severity band. The band matters rather than the event: an incident
+An alert is raised when an active incident is at or above `alert_min_severity`,
+once per incident per severity band. The band matters rather than the event: an incident
 that escalates from medium to high alerts again, because that is new
 information, while the same incident being re-reported at the same severity does
 not. Severity already passes through the credibility gate, so an alert cannot be
@@ -23,12 +23,13 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.config import settings
 from app.db.models import AlertModel, IncidentModel
 from app.schemas.alert import Alert, AlertsOverview
 from app.services.credibility import SEVERITY_ORDER
+from app.services.lifecycle import as_utc, is_active
 
 logger = logging.getLogger(__name__)
 
@@ -41,32 +42,63 @@ def _rank(severity: str) -> int:
 
 
 class AlertService:
-    def raise_for(self, db: Session, incident_ids: list[str]) -> list[AlertModel]:
-        """Alert on the incidents among these that have crossed into a new band.
+    def pending(self, db: Session, incident_ids: list[str]) -> list[tuple[IncidentModel, bool]]:
+        """The incidents among these that should alert, worst risk first.
 
-        Returns the alerts raised, newest band first. Does not deliver them;
-        deliver() does that, so a slow endpoint cannot hold up an ingest.
+        Each comes with whether this is an escalation of one already alerted.
+        Selection is separate from creation so that a dry run can report what
+        would be raised without writing anything.
+
+        Only active incidents qualify. Severity is not retired when reporting
+        stops, so the archive fills with old severe incidents: of 967 stored,
+        82 are medium or above but only 3 of those are still being reported.
+        Alerting on the rest would mean alerting on history.
         """
         if not settings.alerts_enabled or not incident_ids:
             return []
         floor = _rank(settings.alert_min_severity)
-        incidents = db.scalars(
-            select(IncidentModel).where(IncidentModel.id.in_(incident_ids))
-        ).all()
+        incidents = (
+            db.scalars(
+                select(IncidentModel)
+                .where(IncidentModel.id.in_(incident_ids))
+                .options(selectinload(IncidentModel.sources))
+            )
+            .unique()
+            .all()
+        )
+        alerted_bands: dict[str, int] = {}
+        for incident_id, severity in db.execute(
+            select(AlertModel.incident_id, AlertModel.severity).where(
+                AlertModel.incident_id.in_(incident_ids)
+            )
+        ).all():
+            alerted_bands[incident_id] = max(alerted_bands.get(incident_id, -1), _rank(severity))
 
-        raised: list[AlertModel] = []
+        chosen: list[tuple[IncidentModel, bool]] = []
         for incident in sorted(incidents, key=lambda item: -item.risk_score):
-            if len(raised) >= settings.alert_max_per_sync:
+            if len(chosen) >= settings.alert_max_per_sync:
                 break
             if _rank(incident.severity) < floor:
                 continue
-            alerted = db.scalars(
-                select(AlertModel.severity).where(AlertModel.incident_id == incident.id)
-            ).all()
-            if alerted and max(_rank(severity) for severity in alerted) >= _rank(incident.severity):
+            last_report = max((as_utc(source.published_at) for source in incident.sources), default=None)
+            if not is_active(incident.category, last_report):
                 continue
-            raised.append(self._build(db, incident, escalated=bool(alerted)))
+            already = alerted_bands.get(incident.id, -1)
+            if already >= _rank(incident.severity):
+                continue
+            chosen.append((incident, already >= 0))
+        return chosen
 
+    def raise_for(self, db: Session, incident_ids: list[str]) -> list[AlertModel]:
+        """Alert on the incidents among these that have crossed into a new band.
+
+        Returns the alerts raised, worst risk first. Does not deliver them;
+        deliver() does that, so a slow endpoint cannot hold up an ingest.
+        """
+        raised = [
+            self._build(db, incident, escalated=escalated)
+            for incident, escalated in self.pending(db, incident_ids)
+        ]
         if raised:
             db.commit()
         return raised

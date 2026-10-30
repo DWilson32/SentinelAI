@@ -6,11 +6,9 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.db.models import AlertModel, IncidentModel
+from app.db.models import AlertModel, IncidentModel, SourceModel
 from app.services import alert_service as module
 from app.services.alert_service import alert_service
-
-T0 = datetime(2026, 10, 30, 9, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +19,13 @@ def alerting(monkeypatch):
     monkeypatch.setattr(settings, "alert_webhook_url", None)
 
 
-def add(db, incident_id, severity, risk_score, *, sources=2, credibility=0.97):
+def add(db, incident_id, severity, risk_score, *, sources=2, credibility=0.97, reported_hours_ago=1.0):
+    """An incident with one source, reported recently enough to count as active.
+
+    Alerting only covers active incidents, so the source timestamp matters:
+    reported_hours_ago past the 72-hour window makes the incident archived.
+    """
+    now = datetime.now(timezone.utc)
     db.add(
         IncidentModel(
             id=incident_id,
@@ -34,13 +38,26 @@ def add(db, incident_id, severity, risk_score, *, sources=2, credibility=0.97):
             risk_score=risk_score,
             status="monitoring",
             summary="A report.",
-            created_at=T0,
-            updated_at=T0,
+            created_at=now,
+            updated_at=now,
             recommended_actions=[],
             risk_confidence=0.6,
             risk_drivers=[],
             feature_importance={},
             evidence={"credibility": credibility, "independent_sources": sources, "origins": [], "copies": []},
+        )
+    )
+    db.flush()
+    db.add(
+        SourceModel(
+            id=f"src-{incident_id}",
+            incident_id=incident_id,
+            title=f"Airstrike reported in {incident_id}",
+            url=f"https://news.example/{incident_id}",
+            publisher="Reuters",
+            credibility_score=0.9,
+            published_at=now - timedelta(hours=reported_hours_ago),
+            raw_text="A report.",
         )
     )
     db.commit()
@@ -187,8 +204,16 @@ def test_newest_alerts_come_first(db):
     add(db, "inc-a", "medium", 46.9)
     add(db, "inc-b", "high", 61.0)
     first = alert_service.raise_for(db, ["inc-a"])[0]
-    first.created_at = T0 - timedelta(hours=2)
+    first.created_at = datetime.now(timezone.utc) - timedelta(hours=2)
     db.commit()
     alert_service.raise_for(db, ["inc-b"])
 
     assert [alert.incident_id for alert in alert_service.overview(db).alerts] == ["inc-b", "inc-a"]
+
+
+def test_an_incident_no_longer_being_reported_does_not_alert(db):
+    # Severity is never retired, so the archive fills with old severe incidents.
+    add(db, "inc-stale", "high", 72.0, reported_hours_ago=120)
+
+    assert alert_service.pending(db, ["inc-stale"]) == []
+    assert alert_service.raise_for(db, ["inc-stale"]) == []
