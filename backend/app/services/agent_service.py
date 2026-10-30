@@ -158,14 +158,17 @@ class AgentService:
         except ValueError:
             return []
 
+        # Only incidents still being reported: the archive holds months of severe
+        # ones, and investigating those would spend the budget on history.
+        wanted = set(incident_ids) & set(incident_service.active_ids(db))
         rows = db.execute(
             select(IncidentModel.id, IncidentModel.severity, IncidentModel.risk_score)
-            .where(IncidentModel.id.in_(incident_ids))
+            .where(IncidentModel.id.in_(wanted))
             .order_by(IncidentModel.risk_score.desc())
         ).all()
         already = set(
             db.scalars(
-                select(AgentRunModel.incident_id).where(AgentRunModel.incident_id.in_(incident_ids))
+                select(AgentRunModel.incident_id).where(AgentRunModel.incident_id.in_(wanted))
             ).all()
         )
 

@@ -21,8 +21,6 @@ from app.services.embedding_service import embedding_service
 from app.services.entity_resolution import Pending, Report, entity_resolver, mostly_latin
 from app.services import geocoder
 from app.services.credibility import apply_evidence, publisher_credibility
-from app.services.agent_service import agent_service
-from app.services.alert_service import alert_service
 from app.services.headlines import retitle, summarize
 from app.services.feed_status_service import (
     FEEDS,
@@ -202,25 +200,10 @@ class IngestionService:
         created_count = sum(1 for incident in incidents if incident.created)
         matched_count = sum(1 for incident in incidents if incident.matched)
 
-        # What the sync does without being asked: investigate the incidents that
-        # warrant it, then alert on the ones that crossed a severity band. Each
-        # step is guarded, because a sync that already stored its reports must
-        # not report failure over work that comes after them.
-        investigated: list[str] = []
-        try:
-            investigated = agent_service.investigate_priorities(db, touched)
-        except Exception as exc:
-            logger.warning("Auto-investigation failed after ingestion: %s", exc)
-            db.rollback()
-
-        alerted = delivered = 0
-        try:
-            raised = alert_service.raise_for(db, touched)
-            alerted = len(raised)
-            delivered = alert_service.deliver(db, raised)
-        except Exception as exc:
-            logger.warning("Alerting failed after ingestion: %s", exc)
-            db.rollback()
+        # Investigating and alerting on what this sync turned up is a separate
+        # operation (monitor_service.follow_up), triggered after the sync rather
+        # than inside it: model calls and an HTTP delivery do not belong in a
+        # request whose job is to store reports.
 
         # Record fleet risk after the data changed, so the dashboard trend is
         # built from real readings instead of placeholders.
@@ -236,15 +219,10 @@ class IngestionService:
             created_count=created_count,
             matched_count=matched_count,
             skipped_count=skipped,
-            investigated_count=len(investigated),
-            alerted_count=alerted,
-            delivered_count=delivered,
             incidents=incidents,
             message=(
                 f"Ingested {created_count} new incident(s); added {matched_count} report(s) to "
-                f"existing incidents; skipped {skipped} duplicate source(s). "
-                f"Investigated {len(investigated)} unprompted; raised {alerted} alert(s), "
-                f"delivered {delivered}."
+                f"existing incidents; skipped {skipped} duplicate source(s)."
             ),
         )
 

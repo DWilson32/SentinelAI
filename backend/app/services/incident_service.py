@@ -7,6 +7,20 @@ from app.schemas.incident import Incident, IncidentDetail, RiskExplanation, Sour
 
 
 class IncidentService:
+    def active_ids(self, db: Session) -> list[str]:
+        """Ids of the incidents still being reported, by the dashboard's own window.
+
+        The follow-up work and alerting both need this, and both would otherwise
+        act on the archive: severity is never retired when reporting stops, so
+        most of the severe incidents on file are months of history.
+        """
+        rows = db.execute(
+            select(IncidentModel.id, IncidentModel.category, func.max(SourceModel.published_at))
+            .join(SourceModel, SourceModel.incident_id == IncidentModel.id)
+            .group_by(IncidentModel.id, IncidentModel.category)
+        ).all()
+        return [row[0] for row in rows if is_active(row[1], row[2])]
+
     def list_incidents(self, db: Session) -> list[Incident]:
         # Newest source and source count per incident in one grouped subquery,
         # rather than loading every source or querying once per incident.

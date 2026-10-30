@@ -21,3 +21,16 @@ jobs:
             --request POST \
             --header "X-API-Key: $SENTINEL_ADMIN_KEY" \
             https://sentinel-ai-api.onrender.com/api/incidents/ingest/real
+
+      # Investigating what the sync turned up and delivering alerts is a separate
+      # call, so storing reports does not wait on model calls or someone else's
+      # endpoint. It works from derived state, so a missed run costs nothing: the
+      # next one picks up whatever is still outstanding.
+      - name: Investigate and alert on what it found
+        env:
+          SENTINEL_ADMIN_KEY: ${{ secrets.SENTINEL_ADMIN_KEY }}
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "X-API-Key: $SENTINEL_ADMIN_KEY" \
+            https://sentinel-ai-api.onrender.com/api/monitor/follow-up

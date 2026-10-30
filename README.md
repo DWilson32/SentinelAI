@@ -133,6 +133,7 @@ CI builds both stages on every push and checks that the runtime image serves `/h
 | POST | `/api/reports/{id}` | Generate executive Markdown report |
 | GET | `/api/alerts` | Alerts raised, newest first, with delivery state |
 | POST | `/api/alerts/{id}/acknowledge` | Mark an alert as seen |
+| POST | `/api/monitor/follow-up` | Investigate and alert on active incidents (idempotent) |
 | GET | `/api/analytics/overview` | Dashboard metrics |
 
 ## Ingestion
@@ -295,17 +296,28 @@ The gateway (`backend/app/agents/llm.py`) speaks the OpenAI-compatible API. Any 
 
 ## Acting on its own
 
-A sync does three things, in order: store the reports, investigate what warrants it, alert on what crossed a threshold. The second and third used to be a person's job, which meant they happened only when someone had the dashboard open.
+Storing a sync's reports is quick. Investigating what it turned up and delivering alerts is not — the first is model calls, the second an HTTP round trip to someone else's endpoint — so they are a separate call, triggered after the sync rather than inside it:
+
+```
+POST /api/incidents/ingest/real   store the reports, return
+POST /api/monitor/follow-up       investigate what warrants it, alert on it
+```
+
+The scheduled workflow makes both calls. The follow-up works from **derived state** rather than a queue: what needs investigating is "active, severe, no investigation on file", and what needs alerting is the same question asked of the alerts table. So it is idempotent, repeating it does nothing the first call already did, and a missed run costs nothing — the next one picks up whatever is outstanding.
+
+It is also the seam a separate worker would take: the follow-up already has its own entry point and its own trigger, so moving it off the web process is a deployment change rather than a code change. It is not one today because free services share a single monthly instance-hour pool, and exceeding it suspends every service in the account — including the dashboard a worker would feed.
 
 ### Unprompted investigation
 
-After a sync, incidents at or above `AUTO_INVESTIGATE_MIN_SEVERITY` (medium) that have **never** been investigated are investigated, worst risk score first, at most `AUTO_INVESTIGATE_MAX_PER_SYNC` (3) per sync. The cap exists because each investigation spends model calls: at roughly 4,000 tokens, the daily budget is about 37 of them.
+Incidents that are **active**, at or above `AUTO_INVESTIGATE_MIN_SEVERITY` (medium), and have **never** been investigated are investigated, worst risk score first, at most `AUTO_INVESTIGATE_MAX_PER_SYNC` (3) per run. The cap exists because each investigation spends model calls: at roughly 4,000 tokens, the daily budget is about 37 of them.
 
-Already-investigated incidents are skipped, so re-reporting the same story does not re-run the agents. One failure is logged and the rest continue.
+Already-investigated incidents are skipped, so re-reporting the same story does not re-run the agents. One failure is logged and the rest continue, and a failed investigation pass does not stop alerting.
 
 ### Alerts
 
-An alert is raised when an incident is at or above `ALERT_MIN_SEVERITY` (medium), **once per incident per severity band**. The band rather than the event is the unit: an incident escalating from medium to high alerts again, because that is new information, while the same incident being re-reported at the same severity does not. Medium is the floor because the severity bands come from death tolls — medium means a report of 1-99 deaths. Severity already passes the credibility gate, so an alert cannot be raised on a single unverified report.
+An alert is raised when an **active** incident is at or above `ALERT_MIN_SEVERITY` (medium), **once per incident per severity band**. The band rather than the event is the unit: an incident escalating from medium to high alerts again, because that is new information, while the same incident being re-reported at the same severity does not. Medium is the floor because the severity bands come from death tolls — medium means a report of 1-99 deaths. Severity already passes the credibility gate, so an alert cannot be raised on a single unverified report.
+
+Being active matters as much as the threshold, and that came from measuring rather than guessing. Of 967 stored incidents, 82 are medium or above but only 3 are still being reported: severity is never retired when reporting stops, so alerting on severity alone would have fired on months of history.
 
 Delivery is a POST of the alert as JSON to `ALERT_WEBHOOK_URL` — a chat webhook, an automation, another service. The payload carries `text` and `content` for chat endpoints plus the structured alert and incident.
 

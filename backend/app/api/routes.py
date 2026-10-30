@@ -20,6 +20,7 @@ from app.services.analytics_service import analytics_service
 from app.services.feed_status_service import feed_status_service
 from app.services.ingestion_service import ingestion_service
 from app.services.incident_service import incident_service
+from app.services.monitor_service import FollowUp, monitor_service
 from app.services.rag_index_service import rag_index_service
 from app.services.rag_service import rag_service
 from app.services.report_service import report_service
@@ -151,6 +152,17 @@ def generate_report(incident_id: str, db: Session = Depends(get_db)) -> ReportCr
 @router.get("/analytics/overview", response_model=AnalyticsOverview)
 def analytics_overview(db: Session = Depends(get_db)) -> AnalyticsOverview:
     return analytics_service.get_overview(db)
+
+
+@router.post("/monitor/follow-up", response_model=FollowUp, dependencies=admin_only)
+def follow_up(db: Session = Depends(get_db)) -> FollowUp:
+    """Investigate and alert on the active incidents that warrant it.
+
+    Triggered after a sync rather than inside it, so storing reports does not
+    wait on model calls and an outbound delivery. Idempotent: it works from
+    derived state, so repeating it does nothing the first call already did.
+    """
+    return monitor_service.follow_up(db)
 
 
 @router.get("/alerts", response_model=AlertsOverview)
