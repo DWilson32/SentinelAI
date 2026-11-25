@@ -11,7 +11,7 @@ import { getAlerts, getAnalytics, getFeedStatus, getIncidents } from "@/lib/api"
 
 export default async function Home() {
   const [incidents, analytics, feedStatus, alerts] = await Promise.all([
-    getIncidents(),
+    getIncidents({ activeOnly: true }),
     getAnalytics(),
     getFeedStatus(),
     getAlerts(),
@@ -45,7 +45,7 @@ export default async function Home() {
           <MetricCard
             label="Open Alerts"
             value={alerts.unacknowledged}
-            detail={`${alerts.total} raised in total · medium and above, on corroborated evidence`}
+            detail={`${alerts.total} raised in total · active incidents rated medium and above`}
             icon={AlertTriangle}
           />
           <MetricCard label="Average Risk" value={analytics.average_risk_score} detail="Composite score across live incidents" icon={Gauge} />

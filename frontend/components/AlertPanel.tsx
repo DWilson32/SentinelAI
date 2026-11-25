@@ -80,7 +80,7 @@ export function AlertPanel({ initial }: { initial: AlertsOverview }) {
 
       {alerts.length === 0 ? (
         <p className="rounded-md border border-line bg-slate-50 px-3 py-6 text-center text-sm text-muted">
-          Alerts are raised when an incident is rated medium or above on corroborated evidence.
+          Alerts are raised when an incident still being reported is rated medium or above.
         </p>
       ) : (
         <ul className="space-y-2">

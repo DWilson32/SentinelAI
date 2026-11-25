@@ -23,8 +23,10 @@ export function getAlerts(limit = 20) {
   return request<AlertsOverview>(`/alerts?limit=${limit}`);
 }
 
-export function getIncidents() {
-  return request<Incident[]>("/incidents");
+// The dashboard shows what is being reported now; archived incidents stay
+// reachable by link, and the metric card still counts everything tracked.
+export function getIncidents({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+  return request<Incident[]>(activeOnly ? "/incidents?active_only=true" : "/incidents");
 }
 
 export function getIncident(incidentId: string) {

@@ -35,8 +35,8 @@ admin_only = [Depends(require_admin_key)]
 
 
 @router.get("/incidents", response_model=list[Incident])
-def list_incidents(db: Session = Depends(get_db)) -> list[Incident]:
-    return incident_service.list_incidents(db)
+def list_incidents(active_only: bool = False, db: Session = Depends(get_db)) -> list[Incident]:
+    return incident_service.list_incidents(db, active_only=active_only)
 
 
 @router.get("/incidents/{incident_id}", response_model=IncidentDetail)

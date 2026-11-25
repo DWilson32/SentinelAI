@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import IncidentAliasModel, IncidentModel, SourceModel
-from app.services.lifecycle import as_utc, is_active
+from app.services.lifecycle import CATEGORY_WINDOWS, DEFAULT_WINDOW, as_utc, is_active
 from app.schemas.incident import Incident, IncidentDetail, RiskExplanation, Source, TimelineEvent
 
 
@@ -21,7 +23,13 @@ class IncidentService:
         ).all()
         return [row[0] for row in rows if is_active(row[1], row[2])]
 
-    def list_incidents(self, db: Session) -> list[Incident]:
+    def list_incidents(self, db: Session, *, active_only: bool = False) -> list[Incident]:
+        """Incidents, active first, then by risk.
+
+        active_only keeps the ones still being reported. The dashboard asks for
+        that: by late November it was downloading all 1,602 stored incidents
+        (1.3 MB) on every load to show the 65 that were active.
+        """
         # Newest source and source count per incident in one grouped subquery,
         # rather than loading every source or querying once per incident.
         latest = (
@@ -33,15 +41,23 @@ class IncidentService:
             .group_by(SourceModel.incident_id)
             .subquery()
         )
-        rows = db.execute(
+        query = (
             select(IncidentModel, latest.c.last_published, latest.c.source_count)
             .outerjoin(latest, latest.c.incident_id == IncidentModel.id)
             .order_by(IncidentModel.risk_score.desc())
-        ).all()
+        )
+        if active_only:
+            # The widest activity window, so the database drops the archive and
+            # is_active below applies each category's own window to the rest.
+            widest = max([DEFAULT_WINDOW, *CATEGORY_WINDOWS.values()])
+            query = query.where(latest.c.last_published >= datetime.now(timezone.utc) - widest)
+        rows = db.execute(query).all()
         incidents = [
             self._to_incident(incident, last_published, source_count or 0)
             for incident, last_published, source_count in rows
         ]
+        if active_only:
+            incidents = [incident for incident in incidents if incident.active]
         # Active first, then by risk, so current events lead the list.
         return sorted(incidents, key=lambda i: (not i.active, -i.risk_score))
 
