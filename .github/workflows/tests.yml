@@ -9,7 +9,9 @@ on:
 jobs:
   backend:
     name: Backend tests
-    runs-on: ubuntu-latest
+    # Pinned: Python 3.12.8, which Render runs, has no build for Ubuntu 26.04,
+    # and ubuntu-latest moved there in November 2026, failing setup-python.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
